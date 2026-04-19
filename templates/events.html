@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card p-4 shadow-sm mb-4">
+            <h4 class="mb-3 text-primary fw-bold">Post a Campus Event</h4>
+            <form action="{{ url_for('events') }}" method="POST">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Event Title</label>
+                    <input type="text" name="title" class="form-control" placeholder="e.g., CSE471 Guest Lecture" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Date & Time</label>
+                    <input type="text" name="date" class="form-control" placeholder="e.g., Oct 15, 2:00 PM" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Location</label>
+                    <input type="text" name="location" class="form-control" placeholder="e.g., UB202" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Event Description</label>
+                    <textarea name="description" class="form-control" rows="3" placeholder="What is this event about?" required></textarea>
+                </div>
+                <button type="submit" class="btn btn-warning w-100">Publish Event</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <h2 class="mb-4">Upcoming Events</h2>
+        <div class="row">
+            {% for event in events|reverse %}
+            <div class="col-md-6 mb-3">
+                <div class="card h-100 shadow-sm border-start border-4 border-primary">
+                    <div class="card-body">
+                        <h5 class="card-title text-primary fw-bold">{{ event.title }}</h5>
+                        <h6 class="card-subtitle mb-2 text-muted">📍 {{ event.location_text }} | 🕒 {{ event.event_date }}</h6>
+                        <p class="card-text mt-3">{{ event.description }}</p>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="col-12">
+                <div class="alert alert-info">No upcoming events posted yet. Be the first!</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

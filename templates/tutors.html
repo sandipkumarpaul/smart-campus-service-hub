@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card p-4 shadow-sm">
+            <h4 class="mb-3">Offer a Tutoring Service</h4>
+            <form action="{{ url_for('tutors') }}" method="POST">
+                <div class="mb-3">
+                    <label>Subject/Course (e.g. CSE471)</label>
+                    <input type="text" name="subject" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label>Availability</label>
+                    <input type="text" name="availability" class="form-control" placeholder="e.g. Mon/Wed 2-4 PM" required>
+                </div>
+                <div class="mb-3">
+                    <label>Email Address</label>
+                    <input type="email" name="contact" class="form-control" placeholder="e.g. name@g.bracu.ac.bd" required>
+                </div>
+                <div class="mb-3">
+                    <label>Hourly Rate (BDT)</label>
+                    <input type="text" name="rate" class="form-control" required>
+                </div>
+                
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" name="free_consult" value="Yes" id="freeConsult">
+                    <label class="form-check-label fw-bold text-success" for="freeConsult">
+                        🎁 Offer 1 Free Consultation?
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn-warning w-100">Post Listing</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <h2 class="mb-4">Available Tutors</h2>
+        {% for tutor in tutors %}
+        <div class="card mb-3 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title text-primary fw-bold">{{ tutor.subject_title }}</h5>
+                
+                {% if tutor.free_consult == 'Yes' %}
+                    <span class="badge bg-success mb-2">✨ 1st Consultation Free</span>
+                {% endif %}
+
+                <h6 class="card-subtitle mb-2 text-muted">Tutor: {{ tutor.user.full_name }}</h6>
+                <p class="card-text mb-1"><strong>Available:</strong> {{ tutor.availability_text }}</p>
+                <p class="card-text mb-1"><strong>Rate:</strong> {{ tutor.hourly_rate }} BDT/hr</p>
+                
+                <a href="https://mail.google.com/mail/?view=cm&fs=1&to={{ tutor.contact_info }}&su=Tutoring Inquiry: {{ tutor.subject_title }}&body=Hi {{ tutor.user.full_name }}, I found your profile on the Smart Campus Service Hub and would like to discuss tutoring for {{ tutor.subject_title }}. Let me know when you are free to chat!" target="_blank" class="btn btn-sm btn-primary mt-2">Contact Tutor</a>
+            </div>
+        </div>
+        {% else %}
+        <p>No tutors available yet. Be the first to post!</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
