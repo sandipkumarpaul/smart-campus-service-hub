@@ -8,19 +8,44 @@
             <form action="{{ url_for('events') }}" method="POST">
                 <div class="mb-3">
                     <label class="form-label fw-bold">Event Title</label>
-                    <input type="text" name="title" class="form-control" placeholder="e.g., CSE471 Guest Lecture" required>
+                    <input type="text" name="title" class="form-control" required>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Date & Time</label>
-                    <input type="text" name="date" class="form-control" placeholder="e.g., Oct 15, 2:00 PM" required>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Type</label>
+                        <select name="category" class="form-select">
+                            <option value="Workshop">Workshop</option>
+                            <option value="Seminar">Seminar</option>
+                            <option value="Club Activity">Club Activity</option>
+                            <option value="Social">Social</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Date & Time</label>
+                        <input type="text" name="date" class="form-control" placeholder="Oct 15, 2 PM" required>
+                    </div>
                 </div>
+
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Location</label>
-                    <input type="text" name="location" class="form-control" placeholder="e.g., UB202" required>
+                    <label class="form-label fw-bold">Venue / Link</label>
+                    <input type="text" name="location" class="form-control" required>
                 </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Target Audience</label>
+                        <input type="text" name="target_audience" class="form-control" placeholder="e.g. CS Students">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Capacity</label>
+                        <input type="number" name="capacity_limit" class="form-control" placeholder="e.g. 30">
+                    </div>
+                </div>
+
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Event Description</label>
-                    <textarea name="description" class="form-control" rows="3" placeholder="What is this event about?" required></textarea>
+                    <label class="form-label fw-bold">Agenda / Description</label>
+                    <textarea name="description" class="form-control" rows="3" required></textarea>
                 </div>
                 <button type="submit" class="btn btn-warning w-100">Publish Event</button>
             </form>
@@ -28,21 +53,57 @@
     </div>
 
     <div class="col-md-8">
-        <h2 class="mb-4">Upcoming Events</h2>
+        <h2 class="mb-4">🔥 Happening on Campus</h2>
         <div class="row">
-            {% for event in events|reverse %}
-            <div class="col-md-6 mb-3">
+            {% for event in events %}
+            <div class="col-md-6 mb-4">
                 <div class="card h-100 shadow-sm border-start border-4 border-primary">
                     <div class="card-body">
-                        <h5 class="card-title text-primary fw-bold">{{ event.title }}</h5>
-                        <h6 class="card-subtitle mb-2 text-muted">📍 {{ event.location_text }} | 🕒 {{ event.event_date }}</h6>
+                        <span class="badge bg-info text-dark mb-2">{{ event.category }}</span>
+                        <span class="badge bg-secondary mb-2">👤 {{ event.target_audience }}</span>
+                        
+                        <h5 class="card-title text-primary fw-bold mt-1">{{ event.title }}</h5>
+                        <p class="mb-1"><small class="text-muted">By: {{ event.creator.full_name }}</small></p>
+                        <h6 class="card-subtitle mb-2 text-muted mt-2">📍 {{ event.location_text }} | 🕒 {{ event.event_date }}</h6>
+                        
                         <p class="card-text mt-3">{{ event.description }}</p>
+                        
+                        <hr>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                {% if event.capacity_limit > 0 %}
+                                    <strong>{{ event.participants|length }} / {{ event.capacity_limit }}</strong> spots filled
+                                {% else %}
+                                    <strong>{{ event.participants|length }}</strong> people interested
+                                {% endif %}
+                            </div>
+                            <div>
+                                {% set user_status = namespace(state='none') %}
+                                {% for participant in event.participants %}
+                                    {% if participant.user_id == 1 %}
+                                        {% set user_status.state = participant.attendance_status %}
+                                    {% endif %}
+                                {% endfor %}
+
+                                {% if user_status.state == 'going' %}
+                                    <button class="btn btn-sm btn-success" disabled>🎉 You're Going!</button>
+                                
+                                {% elif user_status.state == 'interested' %}
+                                    <button class="btn btn-sm btn-warning text-dark" disabled>⭐ Interested</button>
+                                    <a href="{{ url_for('rsvp', event_id=event.id, status='going') }}" class="btn btn-sm btn-primary">✅ Change to RSVP</a>
+                                
+                                {% else %}
+                                    <a href="{{ url_for('rsvp', event_id=event.id, status='interested') }}" class="btn btn-sm btn-outline-secondary">⭐ Interested</a>
+                                    <a href="{{ url_for('rsvp', event_id=event.id, status='going') }}" class="btn btn-sm btn-primary">✅ RSVP</a>
+                                {% endif %}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
             {% else %}
             <div class="col-12">
-                <div class="alert alert-info">No upcoming events posted yet. Be the first!</div>
+                <div class="alert alert-info">No upcoming events posted yet.</div>
             </div>
             {% endfor %}
         </div>

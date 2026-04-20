@@ -3,32 +3,64 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8">
-        <div class="card shadow-sm">
-            <div class="card-header bg-primary text-white text-center">
-                <h4 class="mb-0">💬 Campus Messaging (General Chat)</h4>
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center p-3">
+                <h5 class="mb-0">💬 {{ active_conv.title }}</h5>
+                <span class="badge bg-light text-primary">Private Chat</span>
             </div>
             
-            <div class="card-body" style="height: 400px; overflow-y: auto; background-color: #F1F5F9;">
-                {% for msg in messages %}
-                <div class="mb-3 p-3 bg-white rounded shadow-sm border">
-                    <div class="d-flex justify-content-between mb-1">
-                        <strong class="text-primary">{{ msg.sender.full_name }}</strong>
-                        <small class="text-muted">Just now</small>
+            {% if active_conv.context_type %}
+            <div class="bg-light p-3 border-bottom border-start border-4 border-warning">
+                <div class="d-flex align-items-center">
+                    <div class="fs-4 me-3">📌</div>
+                    <div>
+                        <small class="text-muted fw-bold text-uppercase">Referenced Post</small>
+                        <p class="mb-0 fw-bold text-dark">You are discussing a {{ active_conv.context_type }} listing.</p>
+                        <a href="#" class="text-decoration-none small">View Original Post ↗</a>
                     </div>
-                    <p class="mb-0">{{ msg.message_text }}</p>
                 </div>
+            </div>
+            {% endif %}
+            
+            <div class="card-body" style="height: 400px; overflow-y: auto; background-color: #F8FAFC;">
+                {% for msg in messages %}
+                
+                <div class="d-flex flex-column {% if msg.sender_id == 1 %}align-items-end{% else %}align-items-start{% endif %} mb-3">
+                    
+                    <div class="p-3 rounded-3 shadow-sm {% if msg.sender_id == 1 %}bg-primary text-white{% else %}bg-white border{% endif %}" style="max-width: 75%;">
+                        <strong class="d-block mb-1 {% if msg.sender_id == 1 %}text-light{% else %}text-primary{% endif %}">
+                            {{ msg.sender.full_name }}
+                        </strong>
+                        <p class="mb-0">{{ msg.message_text }}</p>
+                    </div>
+                    
+                    <small class="text-muted mt-1" style="font-size: 0.75rem;">
+                        Just now • 
+                        {% if msg.is_seen %}
+                            <span class="text-success fw-bold">✓✓ Read</span>
+                        {% else %}
+                            <span>✓ Delivered</span>
+                        {% endif %}
+                    </small>
+                </div>
+                
                 {% else %}
                 <div class="text-center text-muted mt-5">
-                    <p>No messages yet. Start the conversation!</p>
+                    <p>No messages yet. Say hello!</p>
                 </div>
                 {% endfor %}
             </div>
 
             <div class="card-footer bg-white p-3">
                 <form action="{{ url_for('messages') }}" method="POST">
-                    <div class="input-group">
-                        <input type="text" name="content" class="form-control" placeholder="Type your message..." required>
-                        <button type="submit" class="btn btn-primary">Send ✉️</button>
+                    <div class="input-group align-items-center">
+                        <button type="button" class="btn btn-light border text-secondary me-2 rounded" title="Attach File">
+                            📎
+                        </button>
+                        
+                        <input type="text" name="content" class="form-control rounded-start" placeholder="Type your message or paste a link..." required autocomplete="off">
+                        
+                        <button type="submit" class="btn btn-primary rounded-end">Send ✉️</button>
                     </div>
                 </form>
             </div>

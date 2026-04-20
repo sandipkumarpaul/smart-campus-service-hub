@@ -3,58 +3,139 @@
 {% block content %}
 <div class="row">
     <div class="col-md-4">
-        <div class="card p-4 shadow-sm">
-            <h4 class="mb-3">Offer a Tutoring Service</h4>
+        <div class="card p-4 shadow-sm mb-4 border-0 border-top border-4 border-warning">
+            <h4 class="mb-3 fw-bold">Offer Tutoring</h4>
             <form action="{{ url_for('tutors') }}" method="POST">
                 <div class="mb-3">
-                    <label>Subject/Course (e.g. CSE471)</label>
+                    <label class="fw-bold small">Subject/Course (e.g. CSE471)</label>
                     <input type="text" name="subject" class="form-control" required>
                 </div>
+                
                 <div class="mb-3">
-                    <label>Availability</label>
-                    <input type="text" name="availability" class="form-control" placeholder="e.g. Mon/Wed 2-4 PM" required>
+                    <label class="fw-bold small">Teaching Style Blurb</label>
+                    <textarea name="teaching_style" class="form-control" rows="2" placeholder="e.g. I explain with diagrams, not just formulas!" required></textarea>
                 </div>
-                <div class="mb-3">
-                    <label>Email Address</label>
-                    <input type="email" name="contact" class="form-control" placeholder="e.g. name@g.bracu.ac.bd" required>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="fw-bold small">Format</label>
+                        <select name="mode" class="form-select">
+                            <option value="Online">Online</option>
+                            <option value="offline">In-Person</option>
+                            <option value="Both">Both</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="fw-bold small">Location/Link</label>
+                        <input type="text" name="location" class="form-control" placeholder="e.g. UB2 Library">
+                    </div>
                 </div>
+
                 <div class="mb-3">
-                    <label>Hourly Rate (BDT)</label>
-                    <input type="text" name="rate" class="form-control" required>
+                    <label class="fw-bold small">Structured Availability</label>
+                    <input type="text" name="availability" class="form-control" placeholder="e.g. Mon 4-6 PM, Fri 2-4 PM" required>
+                </div>
+
+                <div class="row align-items-end">
+                    <div class="col-md-6 mb-3">
+                        <label class="fw-bold small">Compensation</label>
+                        <select name="rate_type" class="form-select">
+                            <option value="Paid">Paid</option>
+                            <option value="Barter">Skill Barter</option>
+                            <option value="Free">Free</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="fw-bold small">Rate (BDT/hr)</label>
+                        <input type="text" name="rate" class="form-control" placeholder="0 if Free/Barter" required>
+                    </div>
                 </div>
                 
-                <div class="form-check mb-3">
+                <div class="form-check mb-4">
                     <input class="form-check-input" type="checkbox" name="free_consult" value="Yes" id="freeConsult">
-                    <label class="form-check-label fw-bold text-success" for="freeConsult">
+                    <label class="form-check-label fw-bold text-success small" for="freeConsult">
                         🎁 Offer 1 Free Consultation?
                     </label>
                 </div>
 
-                <button type="submit" class="btn btn-warning w-100">Post Listing</button>
+                <button type="submit" class="btn btn-warning w-100 fw-bold">Post Profile</button>
             </form>
         </div>
     </div>
 
     <div class="col-md-8">
-        <h2 class="mb-4">Available Tutors</h2>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="mb-0">Find a Tutor</h2>
+            <button class="btn btn-outline-secondary btn-sm">⚙️ Filters</button>
+        </div>
+        
         {% for tutor in tutors %}
-        <div class="card mb-3 shadow-sm">
-            <div class="card-body">
-                <h5 class="card-title text-primary fw-bold">{{ tutor.subject_title }}</h5>
-                
+        <div class="card mb-4 shadow-sm border-0">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title text-primary fw-bold mb-1">{{ tutor.subject_title }}</h4>
+                        <h6 class="text-muted mb-3">Tutor: {{ tutor.user.full_name }} | ⭐ 4.8/5 (12 Reviews)</h6>
+                    </div>
+                    <div class="text-end">
+                        {% if tutor.rate_type == 'Barter' %}
+                            <span class="badge bg-purple px-3 py-2 fs-6" style="background-color: #6f42c1;">🔄 Skill Swap</span>
+                        {% elif tutor.rate_type == 'Free' %}
+                            <span class="badge bg-success px-3 py-2 fs-6">🆓 Free</span>
+                        {% else %}
+                            <span class="badge bg-dark px-3 py-2 fs-6">৳ {{ tutor.hourly_rate }}/hr</span>
+                        {% endif %}
+                    </div>
+                </div>
+
                 {% if tutor.free_consult == 'Yes' %}
-                    <span class="badge bg-success mb-2">✨ 1st Consultation Free</span>
+                    <span class="badge bg-success mb-3 bg-opacity-25 text-success border border-success">✨ 1st Consultation Free</span>
                 {% endif %}
 
-                <h6 class="card-subtitle mb-2 text-muted">Tutor: {{ tutor.user.full_name }}</h6>
-                <p class="card-text mb-1"><strong>Available:</strong> {{ tutor.availability_text }}</p>
-                <p class="card-text mb-1"><strong>Rate:</strong> {{ tutor.hourly_rate }} BDT/hr</p>
+                <p class="fst-italic text-secondary border-start border-3 ps-3 mb-3">"{{ tutor.teaching_style }}"</p>
                 
-                <a href="https://mail.google.com/mail/?view=cm&fs=1&to={{ tutor.contact_info }}&su=Tutoring Inquiry: {{ tutor.subject_title }}&body=Hi {{ tutor.user.full_name }}, I found your profile on the Smart Campus Service Hub and would like to discuss tutoring for {{ tutor.subject_title }}. Let me know when you are free to chat!" target="_blank" class="btn btn-sm btn-primary mt-2">Contact Tutor</a>
+                <div class="row text-muted small mb-4">
+                    <div class="col-sm-4"><strong>🕒 Availability:</strong><br> {{ tutor.availability_text }}</div>
+                    <div class="col-sm-4"><strong>📍 Format:</strong><br> {{ tutor.mode }} ({{ tutor.location_text }})</div>
+                    <div class="col-sm-4"><strong>📅 Bookings:</strong><br> {{ tutor.bookings|length }} upcoming sessions</div>
+                </div>
+                
+                <hr>
+                
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary px-4 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#bookForm{{ tutor.id }}">
+                        📅 Request Time Slot
+                    </button>
+                    <a href="{{ url_for('start_chat', c_type='Tutor', c_id=tutor.id) }}" class="btn btn-outline-primary px-3">💬 Message</a>
+                    <button class="btn btn-outline-secondary px-3 ms-auto">🔖 Save</button>
+                </div>
+
+                <div class="collapse mt-3" id="bookForm{{ tutor.id }}">
+                    <div class="card card-body bg-light border-0">
+                        <form action="{{ url_for('book_tutor', listing_id=tutor.id) }}" method="POST">
+                            <div class="row">
+                                <div class="col-md-4 mb-2">
+                                    <label class="small fw-bold">Proposed Date</label>
+                                    <input type="date" name="session_date" class="form-control form-control-sm" required>
+                                </div>
+                                <div class="col-md-4 mb-2">
+                                    <label class="small fw-bold">Proposed Time</label>
+                                    <input type="time" name="start_time" class="form-control form-control-sm" required>
+                                </div>
+                                <div class="col-md-4 mb-2">
+                                    <label class="small fw-bold">Message/Goal</label>
+                                    <input type="text" name="note" class="form-control form-control-sm" placeholder="e.g. Help with Midterm prep" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success btn-sm mt-2 w-100">Send Request</button>
+                        </form>
+                    </div>
+                </div>
+
             </div>
         </div>
         {% else %}
-        <p>No tutors available yet. Be the first to post!</p>
+        <p class="text-muted">No tutors available yet. Be the first to post!</p>
         {% endfor %}
     </div>
 </div>
