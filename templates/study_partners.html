@@ -3,49 +3,150 @@
 {% block content %}
 <div class="row">
     <div class="col-md-4">
-        <div class="card p-4 shadow-sm">
-            <h4 class="mb-3">Find a Study Partner</h4>
+        <div class="card p-4 shadow-sm mb-4 border-0 border-top border-4 border-info">
+            <h4 class="mb-3 fw-bold">Find a Study Partner</h4>
             <form action="{{ url_for('study_partners') }}" method="POST">
                 <div class="mb-3">
-                    <label>Your Name</label>
-                    <input type="text" name="name" class="form-control" required>
+                    <label class="fw-bold small">Course Name (e.g. CSE221)</label>
+                    <input type="text" name="course" class="form-control" required>
                 </div>
+                
                 <div class="mb-3">
-                    <label>Course Name</label>
-                    <input type="text" name="course" class="form-control" placeholder="e.g. CSE221" required>
+                    <label class="fw-bold small">Current Topic / Chapter</label>
+                    <input type="text" name="current_topic" class="form-control" placeholder="e.g. Graph Algorithms" required>
                 </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="fw-bold small">Prep Goal</label>
+                        <select name="prep_goal" class="form-select">
+                            <option value="Deep Understanding">Deep Understanding</option>
+                            <option value="Exam Cram">Exam Cram 🚨</option>
+                            <option value="Quick Review">Quick Review</option>
+                            <option value="Homework Help">Homework Help</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="fw-bold small">Study Style</label>
+                        <select name="study_style" class="form-select">
+                            <option value="Active Discussion">Active Discussion</option>
+                            <option value="Silent Parallel">Silent Parallel</option>
+                            <option value="Quiz Each Other">Quiz Each Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row align-items-end">
+                    <div class="col-md-6 mb-3">
+                        <label class="fw-bold small">Weekly Availability</label>
+                        <input type="text" name="schedule" class="form-control" placeholder="e.g. Tue/Thu Evenings" required>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="fw-bold small">Group Size</label>
+                        <select name="group_size" class="form-select">
+                            <option value="2">1-on-1</option>
+                            <option value="3">Small Group (3)</option>
+                            <option value="4">Small Group (4)</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="mb-3">
-                    <label>Preferred Schedule</label>
-                    <input type="text" name="schedule" class="form-control" required>
+                    <label class="fw-bold small">Personal Note / Goal</label>
+                    <textarea name="goals" class="form-control" rows="2" placeholder="Looking to solve past papers..." required></textarea>
                 </div>
-                <div class="mb-3">
-                    <label>Preparation Goals</label>
-                    <textarea name="goals" class="form-control" placeholder="e.g. Preparing for midterms..." required></textarea>
-                </div>
-                <div class="mb-3">
-                    <label>Email Address</label>
-                    <input type="email" name="contact" class="form-control" placeholder="e.g. name@g.bracu.ac.bd" required>
-                </div>
-                <button type="submit" class="btn btn-warning w-100">Post Profile</button>
+
+                <button type="submit" class="btn btn-info text-white w-100 fw-bold">Publish Study Card</button>
             </form>
         </div>
     </div>
 
     <div class="col-md-8">
-        <h2 class="mb-4">Study Partner Listings</h2>
-        {% for partner in partners %}
-        <div class="card mb-3 shadow-sm">
-            <div class="card-body">
-                <h5 class="card-title text-primary fw-bold">{{ partner.course }} Study Session</h5>
-                <h6 class="card-subtitle mb-2 text-muted">Student: {{ partner.user.full_name }}</h6>
-                <p class="card-text mb-1"><strong>Schedule:</strong> {{ partner.preferred_study_time }}</p>
-                <a href="https://mail.google.com/mail/?view=cm&fs=1&to={{ partner.user.email }}..." ...>Connect</a>
-                
-                <a href="https://mail.google.com/mail/?view=cm&fs=1&to={{ partner.contact }}&su=Study Partner Request: {{ partner.course }}&body=Hi {{ partner.name }}, I saw your post on the Smart Campus Service Hub. I am also preparing for {{ partner.course }} and would love to connect and see if our schedules align!" target="_blank" class="btn btn-sm btn-primary mt-2">Connect</a>
-            </div>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="mb-0">Study Cards Feed</h2>
+            <button class="btn btn-outline-secondary btn-sm">⚙️ Filter Matches</button>
         </div>
+        
+        {% for partner in partners %}
+            {% if partner.status == 'open' %}
+            <div class="card mb-4 shadow-sm border-0">
+                <div class="card-body p-4">
+                    
+                    <div class="alert alert-success py-2 px-3 mb-3 d-flex align-items-center" style="font-size: 0.85rem;">
+                        <span class="fs-5 me-2">🤝</span> 
+                        <strong>High Compatibility:</strong> You both have activity in the CS department on {{ partner.preferred_study_time }}.
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 class="card-title text-info fw-bold mb-1">{{ partner.title }}</h4>
+                            <h6 class="text-muted mb-3">Student: {{ partner.user.full_name }} | 🎯 Topic: {{ partner.current_topic }}</h6>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-light text-dark border px-2 py-1 mb-1 d-block">👥 Max: {{ partner.group_size }} people</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        {% if partner.prep_goal == 'Exam Cram' %}
+                            <span class="badge bg-danger px-2 py-1 me-1">{{ partner.prep_goal }}</span>
+                        {% else %}
+                            <span class="badge bg-primary px-2 py-1 me-1">{{ partner.prep_goal }}</span>
+                        {% endif %}
+                        <span class="badge bg-secondary px-2 py-1 me-1">🗣️ {{ partner.study_style }}</span>
+                        <span class="badge bg-dark px-2 py-1">🕒 {{ partner.preferred_study_time }}</span>
+                    </div>
+
+                    <p class="fst-italic text-secondary border-start border-3 border-info ps-3 mb-3">"{{ partner.goals }}"</p>
+                    
+                    <hr>
+                    
+                    <div class="d-flex gap-2">
+                        <a href="{{ url_for('start_chat', c_type='Study Partner', c_id=partner.id) }}" class="btn btn-outline-info px-4">💬 Message</a>
+                        
+                        <button class="btn btn-info text-white px-4 fw-bold ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#plannerForm{{ partner.id }}">
+                            📝 Plan Session
+                        </button>
+                    </div>
+
+                    <div class="collapse mt-3" id="plannerForm{{ partner.id }}">
+                        <div class="card card-body bg-light border-0 border-start border-4 border-success">
+                            <h6 class="fw-bold text-success mb-3">Collaborative Session Planner</h6>
+                            <form action="{{ url_for('create_session', post_id=partner.id) }}" method="POST">
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="small fw-bold">Session Title</label>
+                                        <input type="text" name="session_title" class="form-control form-control-sm" value="{{ partner.title }} Prep" required>
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="small fw-bold">Link / Location</label>
+                                        <input type="text" name="location" class="form-control form-control-sm" placeholder="e.g. UB3 Library / Zoom Link" required>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="small fw-bold">Agreed Date</label>
+                                        <input type="date" name="session_date" class="form-control form-control-sm" required>
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="small fw-bold">Agreed Time</label>
+                                        <input type="time" name="start_time" class="form-control form-control-sm" required>
+                                    </div>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="small fw-bold">Task Split (Who prepares what?)</label>
+                                    <input type="text" name="task_split" class="form-control form-control-sm" placeholder="e.g. I will bring practice questions, you bring notes on Chapter 4." required>
+                                </div>
+                                <button type="submit" class="btn btn-success btn-sm mt-2 w-100 fw-bold">Lock in Session & Form Group</button>
+                            </form>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            {% endif %}
         {% else %}
-        <p>No study partners available yet. Post your profile!</p>
+        <p class="text-muted">No study cards posted yet. Be the first to start a group!</p>
         {% endfor %}
     </div>
 </div>

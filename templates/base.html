@@ -20,7 +20,7 @@
 <nav class="navbar navbar-expand-lg">
     <div class="container">
         <a class="navbar-brand fw-bold" href="/">🎓 Smart Campus Service Hub</a>
-        
+        <a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a>
         <div class="collapse navbar-collapse">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                 <li class="nav-item dropdown">
@@ -46,14 +46,42 @@
                 </li>
             </ul>
 
-            <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
-                <li class="nav-item">
-                    <a class="nav-link fw-bold" href="{{ url_for('messages') }}">💬 Messages</a>
-                </li>
+            <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-center">
+                {% if session.get('user_id') %}
+                    <li class="nav-item me-3 text-light">
+                        <small>👤 Hi, {{ session.get('full_name') }}</small>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fw-bold" href="{{ url_for('messages') }}">💬 Messages</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="btn btn-sm btn-outline-light ms-2" href="{{ url_for('logout') }}">Logout</a>
+                    </li>
+                {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('login') }}">Login</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="btn btn-sm btn-primary ms-2" href="{{ url_for('register') }}">Sign Up</a>
+                    </li>
+                {% endif %}
             </ul>
         </div>
     </div>
 </nav>
+
+<div class="container mt-3">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+</div>
 
 <div class="container mt-5 mb-5">
     {% block content %}{% endblock %}
