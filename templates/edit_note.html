@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card shadow-sm mx-auto" style="max-width: 700px;">
+    <div class="card-body">
+        <h2 class="mb-4 text-center">Edit Note</h2>
+
+        <form method="POST">
+            <div class="mb-3">
+                <label class="form-label">Title of Notes</label>
+                <input type="text" name="title" class="form-control" value="{{ note.title }}">
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Course Name</label>
+                <input type="text" name="course" class="form-control" value="{{ note.course }}">
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Term</label>
+                <select name="term" class="form-select">
+                    <option value="Spring" {% if note.term == 'Spring' %}selected{% endif %}>Spring</option>
+                    <option value="Summer" {% if note.term == 'Summer' %}selected{% endif %}>Summer</option>
+                    <option value="Fall" {% if note.term == 'Fall' %}selected{% endif %}>Fall</option>
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Year</label>
+                <select name="year" class="form-select">
+                    <option value="2023" {% if note.year == '2023' %}selected{% endif %}>2023</option>
+                    <option value="2024" {% if note.year == '2024' %}selected{% endif %}>2024</option>
+                    <option value="2025" {% if note.year == '2025' %}selected{% endif %}>2025</option>
+                    <option value="2026" {% if note.year == '2026' %}selected{% endif %}>2026</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100">Update Note</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

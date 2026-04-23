@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="p-5 mb-4 bg-white rounded-3 shadow-sm">
+    <div class="container-fluid py-3">
+        <h1 class="display-5 fw-bold text-primary">Notes Sharing Place</h1>
+        <p class="col-md-8 fs-5">
+            Upload and find previous semester notes easily. Students can share notes in PDF or DOCX format
+            and others can search, download, edit, or delete notes.
+        </p>
+        <a href="{{ url_for('upload_notes') }}" class="btn btn-primary btn-lg">Upload Notes</a>
+        <a href="{{ url_for('search_notes') }}" class="btn btn-outline-primary btn-lg">Search Notes</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Total Notes</h5>
+                <p class="display-6">{{ total_notes }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h4 class="mb-3">Recent Uploaded Notes</h4>
+        {% if recent_notes %}
+        <ul class="list-group">
+            {% for note in recent_notes %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>{{ note.title }}</strong><br>
+                    <small>{{ note.description }} | {{ note.semester }}</small>
+                </div>
+                <a href="{{ url_for('download_file', filename=note.file_path) }}"
+                    class="btn btn-sm btn-success">Download</a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted">No notes uploaded yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
