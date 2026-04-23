@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card shadow-sm mx-auto" style="max-width: 700px;">
+    <div class="card-body">
+        <h2 class="mb-4 text-center">Search Notes</h2>
+
+        <form method="POST">
+            <div class="mb-3">
+                <label class="form-label">Course Name</label>
+                <input type="text" name="course" class="form-control" placeholder="Enter course name">
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Term (Optional)</label>
+                <select name="term" class="form-select">
+                    <option value="">Any Term</option>
+                    <option value="Spring">Spring</option>
+                    <option value="Summer">Summer</option>
+                    <option value="Fall">Fall</option>
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Year (Optional)</label>
+                <select name="year" class="form-select">
+                    <option value="">Any Year</option>
+                    <option value="2023">2023</option>
+                    <option value="2024">2024</option>
+                    <option value="2025">2025</option>
+                    <option value="2026">2026</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100">Search</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

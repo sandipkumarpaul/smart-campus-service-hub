@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row mb-4 align-items-center">
+    <div class="col-md-8">
+        <h2 class="fw-bold" style="color: #1E3A8A;">My Deadlines & Reminders</h2>
+        <p class="text-muted">Track your assignments, exams, and important academic dates.</p>
+    </div>
+    <div class="col-md-4 text-md-end">
+        <button class="btn btn-accent" data-bs-toggle="modal" data-bs-target="#addDeadlineModal">
+            <i class="bi bi-plus-lg me-1"></i> Add Deadline
+        </button>
+    </div>
+</div>
+
+<div class="surface-card mb-5">
+    {% if deadlines %}
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Due Date & Time</th>
+                    <th>Priority</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dl in deadlines %}
+                <tr>
+                    <td class="fw-semibold">{{ dl.title }}</td>
+                    <td class="text-muted small">{{ dl.description or 'No description' }}</td>
+                    <td>
+                        <span class="badge bg-primary rounded-pill">
+                            <i class="bi bi-calendar"></i> {{ dl.deadline_datetime.strftime('%b %d, %Y - %I:%M %p') }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if dl.priority == 'high' %}
+                        <span class="badge bg-danger">High</span>
+                        {% elif dl.priority == 'medium' %}
+                        <span class="badge bg-warning text-dark">Medium</span>
+                        {% else %}
+                        <span class="badge bg-info text-dark">Low</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form action="{{ url_for('delete_deadline', id=dl.id) }}" method="POST" class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                onclick="return confirm('Remove this deadline?');">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <i class="bi bi-journal-check display-1 text-muted mb-3"></i>
+        <h4>No upcoming deadlines!</h4>
+        <p class="text-secondary">You're all caught up. Add a new deadline to get started.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal for Adding Deadline -->
+<div class="modal fade" id="addDeadlineModal" tabindex="-1" aria-labelledby="addDeadlineModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('add_deadline') }}" method="POST">
+                <div class="modal-header" style="background-color: #1E3A8A; color: white;">
+                    <h5 class="modal-title" id="addDeadlineModalLabel">Add New Deadline</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="title" class="form-label fw-semibold">Task/Exam Title</label>
+                        <input type="text" class="form-control" id="title" name="title" required
+                            placeholder="e.g. Midterm Physics">
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label fw-semibold">Description (Optional)</label>
+                        <textarea class="form-control" id="description" name="description" rows="2"
+                            placeholder="Chapters 1-5"></textarea>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="deadline_date" class="form-label fw-semibold">Date</label>
+                            <input type="date" class="form-control" id="deadline_date" name="deadline_date" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="deadline_time" class="form-label fw-semibold">Time</label>
+                            <input type="time" class="form-control" id="deadline_time" name="deadline_time" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Priority</label>
+                        <select class="form-select" name="priority">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary-custom">Save Deadline</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Study Session API Example Section -->
+<div class="mt-5 pt-3 border-top">
+    <h3 class="fw-bold" style="color: #1E3A8A;">Study Session Scheduler</h3>
+    <p class="text-muted">Create Google Calendar synced study sessions using our API.</p>
+    <div class="surface-card">
+        <form id="studySessionForm">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-3">
+                    <input type="text" class="form-control" id="ss_title" placeholder="Topic" required>
+                </div>
+                <div class="col-md-3">
+                    <input type="date" class="form-control" id="ss_date" required>
+                </div>
+                <div class="col-md-2">
+                    <input type="time" class="form-control" id="ss_start" required>
+                </div>
+                <div class="col-md-2">
+                    <input type="time" class="form-control" id="ss_end" required>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-outline-primary w-100">Schedule API</button>
+                </div>
+            </div>
+        </form>
+        <div id="apiResponse" class="mt-3 text-success"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('studySessionForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        const data = {
+            title: document.getElementById('ss_title').value,
+            date: document.getElementById('ss_date').value,
+            start_time: document.getElementById('ss_start').value,
+            end_time: document.getElementById('ss_end').value
+        };
+
+        fetch('/api/study-sessions/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        })
+            .then(response => response.json())
+            .then(data => {
+                const respDiv = document.getElementById('apiResponse');
+                if (data.message) {
+                    respDiv.innerHTML = `<i class="bi bi-check-circle-fill"></i> ${data.message} (Simulated Google Meet link generated)`;
+                    document.getElementById('studySessionForm').reset();
+                } else {
+                    respDiv.innerHTML = `<span class="text-danger">Error: ${data.error}</span>`;
+                }
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
+    });
+</script>
+{% endblock %}
