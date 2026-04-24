@@ -39,7 +39,7 @@ ALLOWED_EXTENSIONS = {"pdf", "docx"}
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 # Connected to XAMPP MySQL Database
 app.config['SECRET_KEY'] = 'bracu_smart_campus_secure_key_2026' 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:@localhost/smart_campus_service_hub(1)'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:@localhost/smart_campus_service_hub'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
