@@ -16,8 +16,8 @@
 {% block content %}
 <div class="row align-items-center mb-4">
     <div class="col-md-8">
-        <h2 class="text-primary fw-bold"><i class="bi bi-geo-alt-fill me-2 text-accent"></i>My Student Services Map</h2>
-        <p class="text-muted mb-0">See your own posts, booked tutor and ride locations, and seller locations for items you contacted.</p>
+        <h2 class="text-primary fw-bold"><i class="bi bi-geo-alt-fill me-2 text-accent"></i>Ride Share Map</h2>
+        <p class="text-muted mb-0">See your own ride posts and ride shares you booked.</p>
     </div>
     <div class="col-md-4 text-md-end mt-3 mt-md-0">
         <span class="badge bg-light text-dark border px-3 py-2">Live OpenStreetMap View</span>
@@ -37,18 +37,7 @@
 
         <div class="card shadow-sm border-0 mb-4">
             <div class="card-body">
-                <h5 class="card-title text-primary fw-bold mb-3">Service Filters</h5>
-
-                <div class="form-check mb-3">
-                    <input class="form-check-input filter-checkbox" type="checkbox" value="tutor" id="filterTutor" checked>
-                    <label class="form-check-label fw-bold d-flex align-items-center justify-content-between" for="filterTutor">
-                        <span class="d-flex align-items-center">
-                            <span class="me-2 rounded-circle" style="width:14px;height:14px;background:#2563eb;display:inline-block;"></span>
-                            Tutors
-                        </span>
-                        <span class="badge bg-light text-dark border" id="countTutor">0</span>
-                    </label>
-                </div>
+                <h5 class="card-title text-primary fw-bold mb-3">Ride Filters</h5>
 
                 <div class="form-check mb-3">
                     <input class="form-check-input filter-checkbox" type="checkbox" value="ride" id="filterRide" checked>
@@ -61,17 +50,6 @@
                     </label>
                 </div>
 
-                <div class="form-check mb-4">
-                    <input class="form-check-input filter-checkbox" type="checkbox" value="item" id="filterItem" checked>
-                    <label class="form-check-label fw-bold d-flex align-items-center justify-content-between" for="filterItem">
-                        <span class="d-flex align-items-center">
-                            <span class="me-2 rounded-circle" style="width:14px;height:14px;background:#d4a017;display:inline-block;"></span>
-                            Item Shares
-                        </span>
-                        <span class="badge bg-light text-dark border" id="countItem">0</span>
-                    </label>
-                </div>
-
                 <hr>
 
                 <div class="d-grid gap-2">
@@ -79,7 +57,7 @@
                         <i class="bi bi-crosshair me-1"></i> Center on Me
                     </button>
                     <button class="btn btn-outline-secondary" id="fitAllBtn" type="button">
-                        <i class="bi bi-bounding-box me-1"></i> Show All Services
+                        <i class="bi bi-bounding-box me-1"></i> Show All Rides
                     </button>
                     <button class="btn btn-outline-secondary" id="clearRouteBtn" type="button">
                         <i class="bi bi-x-circle me-1"></i> Clear Route
@@ -88,7 +66,7 @@
 
                 <div class="alert alert-light border mt-4 mb-0">
                     <div class="fw-bold mb-1">Selected Service</div>
-                    <div id="selectedService" class="small text-muted">Choose one of your markers, a booked tutor or ride, or an item seller location to preview details.</div>
+                    <div id="selectedService" class="small text-muted">Choose a ride marker to preview details and route.</div>
                 </div>
             </div>
         </div>
@@ -97,7 +75,7 @@
             <div class="card-body">
                 <h5 class="card-title text-primary fw-bold mb-3">Map Status</h5>
                 <div id="routeStatus" class="small text-muted">
-                    OpenStreetMap is ready. Select a service marker to see details.
+                    OpenStreetMap is ready. Select a ride marker to see details.
                 </div>
             </div>
         </div>
@@ -124,23 +102,18 @@
     const locations = {{ locations|default([])|tojson|safe }};
 
     function getColor(type) {
-        if (type === 'tutor') return '#2563eb';
         if (type === 'ride') return '#16a34a';
-        return '#d4a017';
+        return '#16a34a';
     }
 
     function getDetailsUrl(location) {
         if (location.url) return location.url;
-        if (location.type === 'tutor') return `/tutors/${location.id}`;
         if (location.type === 'ride') return `/rides/${location.id}`;
-        if (location.type === 'item') return `/item/${location.id}`;
         return '#';
     }
 
     function updateCounts() {
-        document.getElementById('countTutor').textContent = locations.filter(loc => loc.type === 'tutor').length;
         document.getElementById('countRide').textContent = locations.filter(loc => loc.type === 'ride').length;
-        document.getElementById('countItem').textContent = locations.filter(loc => loc.type === 'item').length;
     }
 
     function setStatus(message, level = 'muted') {
@@ -166,7 +139,7 @@
     function fitMapToVisibleServices() {
         const visible = markers.filter(entry => map.hasLayer(entry.marker));
         if (!visible.length) {
-            setStatus('No visible services match the active filters right now.', 'muted');
+            setStatus('No visible rides match the active filters right now.', 'muted');
             return;
         }
         const bounds = L.latLngBounds(visible.map(entry => entry.marker.getLatLng()));
@@ -306,7 +279,7 @@
         updateCounts();
 
         if (!locations.length) {
-            setStatus('Map loaded. No personal tutor, ride, item, or booked ride locations are available yet.', 'muted');
+            setStatus('Map loaded. No ride share locations are available yet.', 'muted');
         } else {
             locations.forEach((location) => {
                 const marker = L.circleMarker([location.lat, location.lng], {
@@ -332,18 +305,14 @@
 
                 marker.on('click', () => {
                     setSelectedService(location);
-                    if (location.type === 'ride') {
-                        drawRideRoute(location);
-                    } else {
-                        setStatus(`Selected ${location.title}. Use Open Details or See Location from the left panel.`, 'success');
-                    }
+                    drawRideRoute(location);
                 });
 
                 markers.push({ marker, type: location.type });
             });
 
             fitMapToVisibleServices();
-            setStatus('Map loaded. Select a service marker to see details.', 'muted');
+            setStatus('Map loaded. Select a ride marker to see details.', 'muted');
         }
 
         document.querySelectorAll('.filter-checkbox').forEach((checkbox) => {
@@ -387,7 +356,7 @@
 
         document.getElementById('fitAllBtn').addEventListener('click', () => {
             fitMapToVisibleServices();
-            setStatus('Showing all visible services on the map.', 'muted');
+            setStatus('Showing all visible rides on the map.', 'muted');
         });
 
         document.getElementById('clearRouteBtn').addEventListener('click', clearRoute);

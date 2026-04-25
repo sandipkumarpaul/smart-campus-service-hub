@@ -74,6 +74,7 @@ ALLOWED_EXTENSIONS = {"pdf", "docx"}
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 GOOGLE_MAPS_API_KEY = _clean_env_value(os.environ.get("GOOGLE_MAPS_API_KEY")) or ""
 OPENROUTESERVICE_API_KEY = _clean_env_value(os.environ.get("OPENROUTESERVICE_API_KEY")) or ""
+DEFAULT_MAP_CENTER = (23.7806, 90.4070)
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(STATIC_UPLOAD_FOLDER, exist_ok=True)
@@ -1641,20 +1642,28 @@ def post_ride():
 
     if request.method == "POST":
         try:
+            start_location = request.form.get("start_location")
+            destination = request.form.get("destination")
+            notes = request.form.get("notes")
+            pickup_lat, pickup_lng, destination_lat, destination_lng = _resolve_ride_coordinates(
+                start_location,
+                destination,
+                notes,
+            )
             ride = Ride(
                 user_id=current_user.username,
-                start_location=request.form.get("start_location"),
-                destination=request.form.get("destination"),
+                start_location=start_location,
+                destination=destination,
                 travel_date=datetime.strptime(request.form.get("travel_date"), "%Y-%m-%d").date(),
                 travel_time=datetime.strptime(request.form.get("travel_time"), "%H:%M").time(),
                 available_seats=int(request.form.get("available_seats")),
                 cost_share=float(request.form.get("cost_share")),
-                notes=request.form.get("notes"),
+                notes=notes,
                 contact_info=request.form.get("contact_info"),
-                latitude=float(request.form.get("latitude")) if request.form.get("latitude") else None,
-                longitude=float(request.form.get("longitude")) if request.form.get("longitude") else None,
-                destination_latitude=float(request.form.get("destination_latitude")) if request.form.get("destination_latitude") else None,
-                destination_longitude=float(request.form.get("destination_longitude")) if request.form.get("destination_longitude") else None,
+                latitude=pickup_lat,
+                longitude=pickup_lng,
+                destination_latitude=destination_lat,
+                destination_longitude=destination_lng,
             )
             db.session.add(ride)
             db.session.commit()
@@ -1725,18 +1734,26 @@ def edit_ride(ride_id):
 
     if request.method == "POST":
         try:
-            ride.start_location = request.form.get("start_location")
-            ride.destination = request.form.get("destination")
+            start_location = request.form.get("start_location")
+            destination = request.form.get("destination")
+            notes = request.form.get("notes")
+            pickup_lat, pickup_lng, destination_lat, destination_lng = _resolve_ride_coordinates(
+                start_location,
+                destination,
+                notes,
+            )
+            ride.start_location = start_location
+            ride.destination = destination
             ride.travel_date = datetime.strptime(request.form.get("travel_date"), "%Y-%m-%d").date()
             ride.travel_time = datetime.strptime(request.form.get("travel_time"), "%H:%M").time()
             ride.available_seats = int(request.form.get("available_seats"))
             ride.cost_share = float(request.form.get("cost_share"))
-            ride.notes = request.form.get("notes")
+            ride.notes = notes
             ride.contact_info = request.form.get("contact_info")
-            ride.latitude = float(request.form.get("latitude")) if request.form.get("latitude") else ride.latitude
-            ride.longitude = float(request.form.get("longitude")) if request.form.get("longitude") else ride.longitude
-            ride.destination_latitude = float(request.form.get("destination_latitude")) if request.form.get("destination_latitude") else ride.destination_latitude
-            ride.destination_longitude = float(request.form.get("destination_longitude")) if request.form.get("destination_longitude") else ride.destination_longitude
+            ride.latitude = pickup_lat if pickup_lat is not None else ride.latitude
+            ride.longitude = pickup_lng if pickup_lng is not None else ride.longitude
+            ride.destination_latitude = destination_lat if destination_lat is not None else ride.destination_latitude
+            ride.destination_longitude = destination_lng if destination_lng is not None else ride.destination_longitude
             db.session.commit()
             flash("Ride updated successfully.", "success")
             return redirect(url_for("ride_details", ride_id=ride.id))
@@ -1779,32 +1796,95 @@ def _openrouteservice_request(url, method="GET", body=None):
         return json.loads(response.read().decode("utf-8"))
 
 
-def _geocode_with_openrouteservice(text_query):
+def _query_mentions_local_area(query):
+    return bool(re.search(r"dhaka|bangladesh|brac|bracu|badda|merul|mohakhali|banani|gulshan|bashundhara|uttara|dhanmondi|mirpur|farmgate", query, re.IGNORECASE))
+
+
+def _clean_geocode_query(text_query):
     query = (text_query or "").strip()
     if not query:
         raise ValueError("Destination is required for routing.")
-    if not re.search(r"dhaka|bangladesh", query, re.IGNORECASE):
-        query = f"{query}, Dhaka, Bangladesh"
-
-    url = f"https://api.openrouteservice.org/geocode/search?{urlencode({'text': query, 'size': 1})}"
-    data = _openrouteservice_request(url)
-    features = data.get("features") or []
-    if not features:
-        raise ValueError("Could not find that location.")
-    coordinates = features[0].get("geometry", {}).get("coordinates")
-    if not coordinates or len(coordinates) < 2:
-        raise ValueError("Coordinates were not returned.")
-    return coordinates
+    return re.sub(r"\s+", " ", query)
 
 
-def _best_effort_geocode(text_query):
+def _geocode_search_candidates(text_query, context_parts=None):
+    query = _clean_geocode_query(text_query)
+    context = " ".join(part.strip() for part in (context_parts or []) if part and part.strip())
+    candidates = []
+
+    if context and context.lower() not in query.lower():
+        candidates.append(f"{query}, {context}")
+    candidates.append(query)
+    if not _query_mentions_local_area(query):
+        candidates.append(f"{query}, Dhaka, Bangladesh")
+
+    seen = set()
+    for candidate in candidates:
+        key = candidate.lower()
+        if key not in seen:
+            seen.add(key)
+            yield candidate
+
+
+def _geocode_with_openrouteservice(text_query, context_parts=None):
+    last_error = None
+    for candidate in _geocode_search_candidates(text_query, context_parts=context_parts):
+        query_args = {
+            "text": candidate,
+            "size": 5,
+            "boundary.country": "BD",
+            "focus.point.lat": DEFAULT_MAP_CENTER[0],
+            "focus.point.lon": DEFAULT_MAP_CENTER[1],
+        }
+        url = f"https://api.openrouteservice.org/geocode/search?{urlencode(query_args)}"
+        data = _openrouteservice_request(url)
+        features = data.get("features") or []
+        if not features:
+            last_error = "Could not find that location."
+            continue
+
+        best_feature = features[0]
+        coordinates = best_feature.get("geometry", {}).get("coordinates")
+        if coordinates and len(coordinates) >= 2:
+            return coordinates
+        last_error = "Coordinates were not returned."
+
+    raise ValueError(last_error or "Could not find that location.")
+
+
+def _best_effort_geocode(text_query, context_parts=None):
     if not text_query or not openrouteservice_api_key():
         return None, None
     try:
-        lng, lat = _geocode_with_openrouteservice(text_query)
+        lng, lat = _geocode_with_openrouteservice(text_query, context_parts=context_parts)
         return lat, lng
     except Exception:
         return None, None
+
+
+def _form_float(name):
+    value = (request.form.get(name) or "").strip()
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def _resolve_ride_coordinates(start_location, destination, notes=None):
+    context_parts = [start_location, destination, notes]
+    pickup_lat = _form_float("latitude")
+    pickup_lng = _form_float("longitude")
+    destination_lat = _form_float("destination_latitude")
+    destination_lng = _form_float("destination_longitude")
+
+    if pickup_lat is None or pickup_lng is None:
+        pickup_lat, pickup_lng = _best_effort_geocode(start_location, context_parts=context_parts)
+    if destination_lat is None or destination_lng is None:
+        destination_lat, destination_lng = _best_effort_geocode(destination, context_parts=context_parts)
+
+    return pickup_lat, pickup_lng, destination_lat, destination_lng
 
 
 @app.route("/api/geocode")
@@ -1816,7 +1896,8 @@ def geocode_api():
         return jsonify({"error": "OpenRouteService API key is missing."}), 503
 
     try:
-        lng, lat = _geocode_with_openrouteservice(query)
+        context = (request.args.get("context") or "").strip()
+        lng, lat = _geocode_with_openrouteservice(query, context_parts=[context])
         return jsonify({"lat": lat, "lng": lng}), 200
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
@@ -1844,14 +1925,24 @@ def ride_route_api(ride_id):
         return jsonify({"error": "You can only view routes for your own rides or rides you booked."}), 403
 
     if ride.latitude is None or ride.longitude is None:
-        return jsonify({"error": "This ride does not have a saved pickup location yet."}), 400
+        ride.latitude, ride.longitude, ride.destination_latitude, ride.destination_longitude = _resolve_ride_coordinates(
+            ride.start_location,
+            ride.destination,
+            ride.notes,
+        )
+        db.session.commit()
+    if ride.latitude is None or ride.longitude is None:
+        return jsonify({"error": "This ride pickup location could not be found from the post details."}), 400
 
     try:
         source_coords = [ride.longitude, ride.latitude]
         destination_coords = (
             [ride.destination_longitude, ride.destination_latitude]
             if ride.destination_latitude is not None and ride.destination_longitude is not None
-            else _geocode_with_openrouteservice(ride.destination)
+            else _geocode_with_openrouteservice(
+                ride.destination,
+                context_parts=[ride.start_location, ride.notes],
+            )
         )
         route_data = _openrouteservice_request(
             "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
@@ -1889,14 +1980,6 @@ def map_view():
     if not current_user:
         return render_template("map.html", locations=[])
 
-    tutors = Tutor.query.filter(
-        Tutor.latitude.isnot(None),
-        Tutor.longitude.isnot(None),
-        (
-            (func.lower(Tutor.contact_info) == current_user.email.lower()) |
-            (func.lower(Tutor.name) == current_user.full_name.lower())
-        ),
-    ).order_by(Tutor.created_at.desc()).all()
     own_rides = Ride.query.filter(
         Ride.latitude.isnot(None),
         Ride.longitude.isnot(None),
@@ -1918,108 +2001,7 @@ def map_view():
             Ride.longitude.isnot(None),
         ).order_by(Ride.updated_at.desc(), Ride.created_at.desc()).all()
 
-    booked_tutor_listing_ids = [
-        listing_id for (listing_id,) in (
-            db.session.query(TutoringBooking.tutoring_listing_id)
-            .filter(TutoringBooking.student_id == current_user.id)
-            .distinct()
-            .all()
-        )
-    ]
-    booked_tutor_listings = []
-    if booked_tutor_listing_ids:
-        booked_tutor_listings = TutoringListing.query.filter(
-            TutoringListing.id.in_(booked_tutor_listing_ids)
-        ).order_by(TutoringListing.id.desc()).all()
-    booked_tutor_profile_ids = [
-        tutor_id for (tutor_id,) in (
-            db.session.query(TutorProfileBooking.tutor_id)
-            .filter(TutorProfileBooking.student_id == current_user.id)
-            .distinct()
-            .all()
-        )
-    ]
-    booked_tutor_profiles = []
-    if booked_tutor_profile_ids:
-        booked_tutor_profiles = Tutor.query.filter(
-            Tutor.id.in_(booked_tutor_profile_ids),
-            Tutor.latitude.isnot(None),
-            Tutor.longitude.isnot(None),
-        ).order_by(Tutor.rating.desc(), Tutor.review_count.desc()).all()
-
-    items = Item.query.filter(
-        Item.latitude.isnot(None),
-        Item.longitude.isnot(None),
-        func.lower(Item.seller_email) == current_user.email.lower(),
-    ).order_by(Item.created_at.desc()).all()
-    buyer_visible_item_ids = []
-    for (context_type,) in (
-        db.session.query(DirectMessage.context_type)
-        .filter(
-            func.lower(DirectMessage.sender) == current_user.email.lower(),
-            DirectMessage.context_type.isnot(None),
-            DirectMessage.context_type.like("item:%"),
-        )
-        .distinct()
-        .all()
-    ):
-        try:
-            buyer_visible_item_ids.append(int(context_type.split(":", 1)[1]))
-        except (ValueError, IndexError, AttributeError):
-            continue
-    buyer_visible_items = []
-    if buyer_visible_item_ids:
-        buyer_visible_items = Item.query.filter(
-            Item.id.in_(buyer_visible_item_ids),
-            Item.latitude.isnot(None),
-            Item.longitude.isnot(None),
-            func.lower(Item.seller_email) != current_user.email.lower(),
-        ).order_by(Item.created_at.desc()).all()
-
     locations = []
-    for tutor in tutors:
-        locations.append({
-            "type": "tutor",
-            "id": tutor.id,
-            "title": tutor.name,
-            "details": f"{tutor.subject} ({tutor.rating} Stars)",
-            "lat": tutor.latitude,
-            "lng": tutor.longitude,
-        })
-    own_tutor_profile_ids = {tutor.id for tutor in tutors}
-    for tutor in booked_tutor_profiles:
-        if tutor.id in own_tutor_profile_ids:
-            continue
-        locations.append({
-            "type": "tutor",
-            "id": tutor.id,
-            "title": f"Booked tutor: {tutor.name}",
-            "details": f"Booked by you | {tutor.subject} | {tutor.location or 'Tutor location available'}",
-            "lat": tutor.latitude,
-            "lng": tutor.longitude,
-        })
-    own_tutor_listing_ids = {
-        listing.id for listing in TutoringListing.query.filter_by(tutor_id=current_user.id).all()
-    }
-    for listing in booked_tutor_listings:
-        if listing.id in own_tutor_listing_ids:
-            continue
-        tutor_lat = listing.latitude
-        tutor_lng = listing.longitude
-        if tutor_lat is None or tutor_lng is None:
-            tutor_lat, tutor_lng = _best_effort_geocode(listing.location_text)
-        if tutor_lat is None or tutor_lng is None:
-            continue
-        locations.append({
-            "type": "tutor",
-            "id": listing.id,
-            "title": f"Booked tutor: {listing.subject_title}",
-            "details": f"Booked by you | {listing.user.full_name if listing.user else 'Tutor'} | {listing.location_text or 'Location available'}",
-            "lat": tutor_lat,
-            "lng": tutor_lng,
-            "url": url_for("tutors"),
-        })
-
     own_ride_ids = set()
     for ride in own_rides:
         own_ride_ids.add(ride.id)
@@ -2049,24 +2031,6 @@ def map_view():
             "lng": ride.longitude,
             "destination_lat": ride.destination_latitude,
             "destination_lng": ride.destination_longitude,
-        })
-    for item in items:
-        locations.append({
-            "type": "item",
-            "id": item.id,
-            "title": item.title,
-            "details": f"Your item | ${item.price}",
-            "lat": item.latitude,
-            "lng": item.longitude,
-        })
-    for item in buyer_visible_items:
-        locations.append({
-            "type": "item",
-            "id": item.id,
-            "title": f"Seller for {item.title}",
-            "details": f"Seller location shared with you | ${item.price}",
-            "lat": item.latitude,
-            "lng": item.longitude,
         })
 
     return render_template("map.html", locations=locations)
@@ -2343,78 +2307,10 @@ def dashboard():
             Ride.longitude.isnot(None),
             func.lower(Ride.user_id) != current_user.username.lower(),
         ).count()
-    booked_tutor_listing_ids = [
-        listing_id for (listing_id,) in (
-            db.session.query(TutoringBooking.tutoring_listing_id)
-            .filter(TutoringBooking.student_id == current_user.id)
-            .distinct()
-            .all()
-        )
-    ]
-    booked_tutor_locations_count = 0
-    if booked_tutor_listing_ids:
-        booked_tutor_locations_count = TutoringListing.query.filter(
-            TutoringListing.id.in_(booked_tutor_listing_ids),
-            TutoringListing.location_text.isnot(None),
-            TutoringListing.tutor_id != current_user.id,
-        ).count()
-    booked_tutor_profile_ids = [
-        tutor_id for (tutor_id,) in (
-            db.session.query(TutorProfileBooking.tutor_id)
-            .filter(TutorProfileBooking.student_id == current_user.id)
-            .distinct()
-            .all()
-        )
-    ]
-    booked_tutor_profile_locations_count = 0
-    if booked_tutor_profile_ids:
-        booked_tutor_profile_locations_count = Tutor.query.filter(
-            Tutor.id.in_(booked_tutor_profile_ids),
-            Tutor.latitude.isnot(None),
-            Tutor.longitude.isnot(None),
-            (
-                (func.lower(Tutor.contact_info) != current_user.email.lower()) &
-                (func.lower(Tutor.name) != current_user.full_name.lower())
-            ),
-        ).count()
-    buyer_visible_item_ids = []
-    for (context_type,) in (
-        db.session.query(DirectMessage.context_type)
-        .filter(
-            func.lower(DirectMessage.sender) == current_user.email.lower(),
-            DirectMessage.context_type.isnot(None),
-            DirectMessage.context_type.like("item:%"),
-        )
-        .distinct()
-        .all()
-    ):
-        try:
-            buyer_visible_item_ids.append(int(context_type.split(":", 1)[1]))
-        except (ValueError, IndexError, AttributeError):
-            continue
-    buyer_item_locations_count = 0
-    if buyer_visible_item_ids:
-        buyer_item_locations_count = Item.query.filter(
-            Item.id.in_(buyer_visible_item_ids),
-            Item.latitude.isnot(None),
-            Item.longitude.isnot(None),
-            func.lower(Item.seller_email) != current_user.email.lower(),
-        ).count()
     map_counts = {
-        "items": Item.query.filter(
-            Item.latitude.isnot(None),
-            Item.longitude.isnot(None),
-            func.lower(Item.seller_email) == current_user.email.lower(),
-        ).count() + buyer_item_locations_count,
+        "items": 0,
         "rides": own_mapped_rides_count + booked_mapped_rides_count,
-        "tutors": Tutor.query.filter(
-            Tutor.latitude.isnot(None),
-            Tutor.longitude.isnot(None),
-            (
-                (func.lower(Tutor.contact_info) == current_user.email.lower()) |
-                (func.lower(Tutor.name) == current_user.full_name.lower())
-            ),
-        ).count() + booked_tutor_locations_count + booked_tutor_profile_locations_count,
+        "tutors": 0,
     }
     
 

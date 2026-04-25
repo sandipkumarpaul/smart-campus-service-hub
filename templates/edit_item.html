@@ -2,16 +2,6 @@
 
 {% block title %}Edit Item - Smart Campus Service Hub{% endblock %}
 
-{% block head %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<style>
-    #editItemLocationMap {
-        height: 280px;
-        border-radius: 8px;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-8">
@@ -83,34 +73,6 @@
                         </div>
                     </div>
 
-                    <h5 class="border-bottom pb-2 mb-3 text-accent">Map Location Update</h5>
-
-                    <div class="mb-4">
-                        <label for="exchange_location_text" class="form-label fw-bold">New Meeting Point / Address</label>
-                        <input type="text" class="form-control" id="exchange_location_text" placeholder="Leave blank to keep current map location">
-                        <div class="form-text">
-                            {% if item.latitude and item.longitude %}
-                            Current map point: {{ item.latitude }}, {{ item.longitude }}
-                            {% else %}
-                            No map location saved yet.
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <button type="button" class="btn btn-outline-primary" id="findEditItemLocationBtn">Find on Map</button>
-                    </div>
-
-                    <div class="card border-0 shadow-sm mb-4">
-                        <div class="card-body">
-                            <div class="small text-muted mb-2">Drag the marker or click on the map to correct the exact exchange point.</div>
-                            <div id="editItemLocationMap"></div>
-                        </div>
-                    </div>
-
-                    <input type="hidden" name="latitude" id="item_latitude" value="{{ item.latitude or '' }}">
-                    <input type="hidden" name="longitude" id="item_longitude" value="{{ item.longitude or '' }}">
-
                     <!-- Submit Button -->
                     <div class="d-grid mt-5">
                         <button type="submit" class="btn btn-primary-custom btn-lg shadow-sm">Save Changes</button>
@@ -122,90 +84,4 @@
         
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script>
-    const editItemForm = document.querySelector('form[action^="{{ url_for('edit_item', item_id=item.id) }}"]');
-    const editItemLocationInput = document.getElementById('exchange_location_text');
-    const editItemLatInput = document.getElementById('item_latitude');
-    const editItemLngInput = document.getElementById('item_longitude');
-    const editItemFindBtn = document.getElementById('findEditItemLocationBtn');
-    const editItemLocationMap = L.map('editItemLocationMap').setView([{{ item.latitude or 23.7806 }}, {{ item.longitude or 90.4070 }}], 16);
-    let editItemMarker = null;
-
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(editItemLocationMap);
-
-    function setEditItemMarker(lat, lng) {
-        if (editItemMarker) {
-            editItemMarker.setLatLng([lat, lng]);
-        } else {
-            editItemMarker = L.marker([lat, lng], { draggable: true }).addTo(editItemLocationMap);
-            editItemMarker.on('dragend', () => {
-                const pos = editItemMarker.getLatLng();
-                editItemLatInput.value = pos.lat;
-                editItemLngInput.value = pos.lng;
-            });
-        }
-        editItemLatInput.value = lat;
-        editItemLngInput.value = lng;
-        editItemLocationMap.setView([lat, lng], 17);
-    }
-
-    async function geocodeAddress(address) {
-        const response = await fetch(`/api/geocode?q=${encodeURIComponent(address.trim())}`);
-        if (!response.ok) {
-            const payload = await response.json().catch(() => ({}));
-            throw new Error(payload.error || 'Geocoding request failed');
-        }
-        return response.json();
-    }
-
-    async function findEditedItemLocation() {
-        if (!editItemLocationInput.value.trim()) {
-            alert('Enter a meeting point or address first.');
-            return;
-        }
-
-        try {
-            const result = await geocodeAddress(editItemLocationInput.value.trim());
-            setEditItemMarker(parseFloat(result.lat), parseFloat(result.lng));
-        } catch (error) {
-            alert(error.message || 'Could not find that updated item location. Please enter a clearer address.');
-        }
-    }
-
-    async function geocodeEditedItemLocation(event) {
-        if (!editItemLocationInput.value.trim()) {
-            return true;
-        }
-
-        event.preventDefault();
-        try {
-            const result = await geocodeAddress(editItemLocationInput.value.trim());
-            setEditItemMarker(parseFloat(result.lat), parseFloat(result.lng));
-            editItemForm.submit();
-        } catch (error) {
-            alert(error.message || 'Could not find that updated item location. Please enter a clearer address.');
-        }
-        return false;
-    }
-
-    if (editItemForm) {
-        editItemForm.addEventListener('submit', geocodeEditedItemLocation);
-    }
-    if (editItemFindBtn) {
-        editItemFindBtn.addEventListener('click', findEditedItemLocation);
-    }
-    if (editItemLatInput.value && editItemLngInput.value) {
-        setEditItemMarker(parseFloat(editItemLatInput.value), parseFloat(editItemLngInput.value));
-    }
-    editItemLocationMap.on('click', (event) => {
-        setEditItemMarker(event.latlng.lat, event.latlng.lng);
-    });
-</script>
 {% endblock %}

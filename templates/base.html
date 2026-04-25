@@ -112,7 +112,7 @@
                     <ul class="dropdown-menu">
                         <li><a class="dropdown-item" href="{{ url_for('events') }}">Campus Event Board</a></li>
                         <li><a class="dropdown-item" href="{{ url_for('browse_rides') }}">Campus Ride Share</a></li>
-                        <li><a class="dropdown-item" href="{{ url_for('map_view') }}">Nearby Services Map</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('map_view') }}">Ride Share Map</a></li>
                     </ul>
                 </li>
             </ul>
@@ -123,7 +123,7 @@
                         <small><i class="bi bi-person-circle me-1"></i>Hi, {{ session.get('full_name') }}</small>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link fw-bold" href="{{ url_for('map_view') }}"><i class="bi bi-geo-alt me-1"></i>Map</a>
+                        <a class="nav-link fw-bold" href="{{ url_for('map_view') }}"><i class="bi bi-geo-alt me-1"></i>Ride Map</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link fw-bold" href="{{ url_for('messages') }}"><i class="bi bi-chat-dots me-1"></i>Messages</a>
@@ -169,7 +169,7 @@
                 <a href="{{ url_for('tutors') }}" class="d-block text-decoration-none">Browse Tutors</a>
                 <a href="{{ url_for('browse') }}" class="d-block text-decoration-none">Buy & Sell</a>
                 <a href="{{ url_for('browse_rides') }}" class="d-block text-decoration-none">Ride Share</a>
-                <a href="{{ url_for('map_view') }}" class="d-block text-decoration-none">Nearby Map</a>
+                <a href="{{ url_for('map_view') }}" class="d-block text-decoration-none">Ride Share Map</a>
                 <a href="{{ url_for('study_partners') }}" class="d-block text-decoration-none">Study Partners</a>
                 <a href="{{ url_for('academic_dashboard') }}" class="d-block text-decoration-none">Academic Dashboard</a>
                 <a href="{{ url_for('search_notes') }}" class="d-block text-decoration-none">Shared Notes</a>
