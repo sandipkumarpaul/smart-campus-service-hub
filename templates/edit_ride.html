@@ -163,8 +163,17 @@
         fitEditRideMarkers();
     }
 
+    function editRideGeocodeContext() {
+        const parts = [
+            editPickupLocationInput.value.trim(),
+            editDestinationInput.value.trim(),
+            document.getElementById('notes').value.trim()
+        ].filter(Boolean);
+        return parts.join(', ');
+    }
+
     async function geocodeAddress(address) {
-        const response = await fetch(`/api/geocode?q=${encodeURIComponent(address.trim())}`);
+        const response = await fetch(`/api/geocode?q=${encodeURIComponent(address.trim())}&context=${encodeURIComponent(editRideGeocodeContext())}`);
         if (!response.ok) {
             const payload = await response.json().catch(() => ({}));
             throw new Error(payload.error || 'Geocoding request failed');

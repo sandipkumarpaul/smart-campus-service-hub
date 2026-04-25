@@ -2,16 +2,6 @@
 
 {% block title %}{{ item.title }} - Smart Campus Service Hub{% endblock %}
 
-{% block head %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<style>
-    #itemExchangeMap {
-        height: 280px;
-        border-radius: 12px;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="mb-4">
     <a href="{{ url_for('browse') }}" onclick="if(document.referrer) { window.history.back(); return false; }" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
@@ -79,36 +69,6 @@
                     </div>
 
                     <div class="col-12">
-                        <h4 class="text-primary border-bottom pb-2 mb-3">Item Location</h4>
-                        <div class="bg-light p-4 rounded-4 border">
-                            {% if item.latitude is not none and item.longitude is not none %}
-                            <p class="text-muted mb-3">Buyers can see the exchange point on the map before sending a message.</p>
-                            <div id="itemExchangeMap"></div>
-                            <div class="d-flex flex-wrap gap-2 mt-3">
-                                <a
-                                    href="https://www.openstreetmap.org/?mlat={{ item.latitude }}&mlon={{ item.longitude }}#map=18/{{ item.latitude }}/{{ item.longitude }}"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="btn btn-outline-primary"
-                                >
-                                    See Location
-                                </a>
-                                {% if can_view_item_on_personal_map %}
-                                <a
-                                    href="{{ url_for('map_view') }}?focus=item-{{ item.id }}"
-                                    class="btn btn-outline-warning"
-                                >
-                                    Open in My Student Services Map
-                                </a>
-                                {% endif %}
-                            </div>
-                            {% else %}
-                            <p class="text-muted mb-0">Location has not been added for this item yet.</p>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    <div class="col-12">
                         <h4 class="text-primary border-bottom pb-2 mb-3">Message Seller</h4>
                         <div class="bg-light p-4 rounded-4 border">
                             {% if not current_user %}
@@ -137,25 +97,4 @@
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-{% if item.latitude is not none and item.longitude is not none %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script>
-    const itemExchangeMap = L.map('itemExchangeMap', {
-        scrollWheelZoom: false
-    }).setView([{{ item.latitude }}, {{ item.longitude }}], 16);
-
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(itemExchangeMap);
-
-    L.marker([{{ item.latitude }}, {{ item.longitude }}])
-        .addTo(itemExchangeMap)
-        .bindPopup('{{ item.title|e }} exchange point')
-        .openPopup();
-</script>
-{% endif %}
 {% endblock %}
