@@ -295,6 +295,21 @@ CREATE TABLE `note_downloads` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `note_ratings`
+--
+
+CREATE TABLE `note_ratings` (
+  `id` bigint(20) UNSIGNED NOT NULL,
+  `note_id` bigint(20) UNSIGNED NOT NULL,
+  `rater_id` bigint(20) UNSIGNED NOT NULL,
+  `rating` tinyint(3) UNSIGNED NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `notifications`
 --
 
@@ -834,6 +849,14 @@ ALTER TABLE `note_downloads`
   ADD KEY `fk_note_downloads_user` (`user_id`);
 
 --
+-- Indexes for table `note_ratings`
+--
+ALTER TABLE `note_ratings`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uq_note_rating_user` (`note_id`,`rater_id`),
+  ADD KEY `fk_note_ratings_rater` (`rater_id`);
+
+--
 -- Indexes for table `notifications`
 --
 ALTER TABLE `notifications`
@@ -1059,6 +1082,12 @@ ALTER TABLE `note_downloads`
   MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `note_ratings`
+--
+ALTER TABLE `note_ratings`
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `notifications`
 --
 ALTER TABLE `notifications`
@@ -1249,6 +1278,13 @@ ALTER TABLE `notes`
 ALTER TABLE `note_downloads`
   ADD CONSTRAINT `fk_note_downloads_note` FOREIGN KEY (`note_id`) REFERENCES `notes` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_note_downloads_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `note_ratings`
+--
+ALTER TABLE `note_ratings`
+  ADD CONSTRAINT `fk_note_ratings_note` FOREIGN KEY (`note_id`) REFERENCES `notes` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_note_ratings_rater` FOREIGN KEY (`rater_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `notifications`

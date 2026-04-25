@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Post an Item - Smart Campus Service Hub{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+    #itemLocationMap {
+        height: 280px;
+        border-radius: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        
+        <div class="card card-surface border-0 rounded-4">
+            <div class="card-body p-5">
+                <div class="text-center mb-4">
+                    <h2 class="fw-bold text-primary-custom">Post an Item</h2>
+                    <p class="text-muted">Fill out the details below to list your item on the campus marketplace.</p>
+                </div>
+                
+                <div class="mb-4 text-center">
+                    <a href="{{ url_for('browse') }}" onclick="if(document.referrer) { window.history.back(); return false; }" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+                        <i class="bi bi-arrow-left me-1"></i> Back
+                    </a>
+                </div>
+
+                <!-- CRITICAL: enctype="multipart/form-data" is absolutely required whenever you upload files/images! -->
+                <form action="{{ url_for('post_item') }}" method="POST" enctype="multipart/form-data">
+                    
+                    <!-- Section 1: Item Details -->
+                    <h5 class="border-bottom pb-2 mb-3 text-accent">Item Details</h5>
+                    
+                    <div class="mb-3">
+                        <label for="title" class="form-label fw-bold">Item Title <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="title" name="title" placeholder="e.g. Calculus Textbook, Mini Fridge" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label fw-bold">Description <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="description" name="description" rows="4" placeholder="Describe the item, its condition, and any other helpful details..." required></textarea>
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label for="price" class="form-label fw-bold">Price ($) <span class="text-danger">*</span></label>
+                            <input type="number" step="0.01" class="form-control" id="price" name="price" placeholder="0.00" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="condition" class="form-label fw-bold">Condition <span class="text-danger">*</span></label>
+                            <select id="condition" name="condition" class="form-select" required>
+                                <option value="" selected disabled>Choose...</option>
+                                <option value="Unused">Unused</option>
+                                <option value="Used">Used</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="category" class="form-label fw-bold">Category <span class="text-danger">*</span></label>
+                            <select id="category" name="category" class="form-select" required>
+                                <option value="" selected disabled>Choose...</option>
+                                <option value="Textbooks">Textbooks</option>
+                                <option value="Electronics">Electronics</option>
+                                <option value="Dorm Essentials">Dorm Essentials</option>
+                                <option value="Clothing">Clothing</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: Upload Image -->
+                    <h5 class="border-bottom pb-2 mb-3 text-accent">Item Photo</h5>
+                    
+                    <div class="mb-4">
+                        <label for="image" class="form-label fw-bold">Upload an Image</label>
+                        <!-- type="file" creates an upload button. accept="image/*" restricts it to pictures -->
+                        <input class="form-control" type="file" id="image" name="image" accept="image/*">
+                        <div class="form-text">A good photo increases your chances of selling!</div>
+                    </div>
+
+                    <h5 class="border-bottom pb-2 mb-3 text-accent">Exchange Location</h5>
+
+                    <div class="mb-4">
+                        <label for="exchange_location_text" class="form-label fw-bold">Meeting Point / Address</label>
+                        <input type="text" class="form-control" id="exchange_location_text" placeholder="e.g. BRAC University Gate A, Dhaka">
+                        <div class="form-text">We will use Google Maps to place your item exchange point on the Nearby Student Services Map.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-outline-primary" id="findItemLocationBtn">Find on Map</button>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <div class="small text-muted mb-2">Adjust the marker if the searched address is slightly off.</div>
+                            <div id="itemLocationMap"></div>
+                        </div>
+                    </div>
+
+                    <input type="hidden" name="latitude" id="item_latitude">
+                    <input type="hidden" name="longitude" id="item_longitude">
+
+                    <!-- Section 3: Contact Details -->
+                    <h5 class="border-bottom pb-2 mb-3 text-accent">Your Contact Info</h5>
+                    
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label for="seller_name" class="form-label fw-bold">Your Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="seller_name" name="seller_name" required value="{{ current_user.full_name if current_user else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="seller_email" class="form-label fw-bold">Student Email <span class="text-danger">*</span></label>
+                            <input type="email" class="form-control" id="seller_email" name="seller_email" placeholder="student@university.edu" pattern="[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$" title="Please enter a valid email address (e.g., name@example.com)" required value="{{ current_user.email if current_user else '' }}">
+                        </div>
+                        <div class="col-md-12">
+                            <label for="seller_phone" class="form-label fw-bold">Phone Number (Optional)</label>
+                            <input type="tel" class="form-control" id="seller_phone" name="seller_phone" placeholder="123-456-7890">
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="d-grid mt-5">
+                        <button type="submit" class="btn btn-primary-custom btn-lg shadow-sm">Post My Item</button>
+                    </div>
+                </form>
+                
+            </div>
+        </div>
+        
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+    const itemForm = document.querySelector('form[action="{{ url_for('post_item') }}"]');
+    const itemLocationInput = document.getElementById('exchange_location_text');
+    const itemLatInput = document.getElementById('item_latitude');
+    const itemLngInput = document.getElementById('item_longitude');
+    const itemFindBtn = document.getElementById('findItemLocationBtn');
+    const itemLocationMap = L.map('itemLocationMap').setView([23.7806, 90.4070], 16);
+    let itemMarker = null;
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(itemLocationMap);
+
+    function setItemMarker(lat, lng) {
+        if (itemMarker) {
+            itemMarker.setLatLng([lat, lng]);
+        } else {
+            itemMarker = L.marker([lat, lng], { draggable: true }).addTo(itemLocationMap);
+            itemMarker.on('dragend', () => {
+                const pos = itemMarker.getLatLng();
+                itemLatInput.value = pos.lat;
+                itemLngInput.value = pos.lng;
+            });
+        }
+        itemLatInput.value = lat;
+        itemLngInput.value = lng;
+        itemLocationMap.setView([lat, lng], 17);
+    }
+
+    async function geocodeAddress(address) {
+        const response = await fetch(`/api/geocode?q=${encodeURIComponent(address.trim())}`);
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error || 'Geocoding request failed');
+        }
+        return response.json();
+    }
+
+    async function findItemLocation() {
+        if (!itemLocationInput.value.trim()) {
+            alert('Enter a meeting point or address first.');
+            return;
+        }
+
+        try {
+            const result = await geocodeAddress(itemLocationInput.value.trim());
+            setItemMarker(parseFloat(result.lat), parseFloat(result.lng));
+        } catch (error) {
+            alert(error.message || 'Could not find that item share location. Please enter a clearer address.');
+        }
+    }
+
+    async function geocodeItemLocationIfNeeded(event) {
+        if (!itemLocationInput.value.trim()) {
+            return true;
+        }
+
+        if (itemLatInput.value && itemLngInput.value) {
+            return true;
+        }
+
+        event.preventDefault();
+        try {
+            const result = await geocodeAddress(itemLocationInput.value.trim());
+            setItemMarker(parseFloat(result.lat), parseFloat(result.lng));
+            itemForm.submit();
+        } catch (error) {
+            alert(error.message || 'Could not find that item share location. Please enter a clearer address.');
+        }
+        return false;
+    }
+
+    if (itemForm) {
+        itemForm.addEventListener('submit', geocodeItemLocationIfNeeded);
+    }
+    if (itemFindBtn) {
+        itemFindBtn.addEventListener('click', findItemLocation);
+    }
+    itemLocationMap.on('click', (event) => {
+        setItemMarker(event.latlng.lat, event.latlng.lng);
+    });
+</script>
+{% endblock %}

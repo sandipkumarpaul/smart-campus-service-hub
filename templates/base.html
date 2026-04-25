@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Campus Service Hub</title>
+    <title>{% block title %}Smart Campus Service Hub{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
@@ -68,6 +68,7 @@
             box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
         }
     </style>
+    {% block head %}{% endblock %}
 </head>
 <body>
 
@@ -88,6 +89,8 @@
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Academics</a>
                     <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="{{ url_for('academic_dashboard') }}">Academic Dashboard</a></li>
+                        <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="{{ url_for('search_notes') }}">Notes Sharing Place</a></li>
                         <li><a class="dropdown-item" href="{{ url_for('upload_notes') }}">Upload Notes</a></li>
                         <li><a class="dropdown-item" href="{{ url_for('study_partners') }}">Find a Study Partner</a></li>
@@ -97,15 +100,19 @@
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Marketplace</a>
                     <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="{{ url_for('browse') }}">Buy & Sell Items</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('post_item') }}">Post an Item</a></li>
+                        <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="{{ url_for('tutors') }}">Peer Tutoring</a></li>
-                        <li><a class="dropdown-item" href="#">Skill Exchange</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('post_tutor') }}">Post Tutor Profile</a></li>
                     </ul>
                 </li>
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Campus Life</a>
                     <ul class="dropdown-menu">
                         <li><a class="dropdown-item" href="{{ url_for('events') }}">Campus Event Board</a></li>
-                        <li><a class="dropdown-item" href="#">Campus Ride Share</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('browse_rides') }}">Campus Ride Share</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('map_view') }}">Nearby Services Map</a></li>
                     </ul>
                 </li>
             </ul>
@@ -114,6 +121,9 @@
                 {% if session.get('user_id') %}
                     <li class="nav-item me-3 text-light">
                         <small><i class="bi bi-person-circle me-1"></i>Hi, {{ session.get('full_name') }}</small>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fw-bold" href="{{ url_for('map_view') }}"><i class="bi bi-geo-alt me-1"></i>Map</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link fw-bold" href="{{ url_for('messages') }}"><i class="bi bi-chat-dots me-1"></i>Messages</a>
@@ -157,7 +167,11 @@
             <div class="col-md-4 mb-3 mb-md-0">
                 <h5>Quick Links</h5>
                 <a href="{{ url_for('tutors') }}" class="d-block text-decoration-none">Browse Tutors</a>
+                <a href="{{ url_for('browse') }}" class="d-block text-decoration-none">Buy & Sell</a>
+                <a href="{{ url_for('browse_rides') }}" class="d-block text-decoration-none">Ride Share</a>
+                <a href="{{ url_for('map_view') }}" class="d-block text-decoration-none">Nearby Map</a>
                 <a href="{{ url_for('study_partners') }}" class="d-block text-decoration-none">Study Partners</a>
+                <a href="{{ url_for('academic_dashboard') }}" class="d-block text-decoration-none">Academic Dashboard</a>
                 <a href="{{ url_for('search_notes') }}" class="d-block text-decoration-none">Shared Notes</a>
                 <a href="{{ url_for('deadlines') }}" class="d-block text-decoration-none">Deadlines</a>
             </div>

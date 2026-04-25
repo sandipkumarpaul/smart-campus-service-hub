@@ -65,6 +65,28 @@
                 </form>
             </div>
         </div>
+
+        {% if direct_messages %}
+        <div class="card shadow-sm border-0 mt-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0 text-primary fw-bold">Marketplace & Tutor Messages</h5>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for direct in direct_messages %}
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between gap-2">
+                        <strong>{{ direct.sender }} to {{ direct.receiver }}</strong>
+                        <small class="text-muted">{{ direct.created_at.strftime('%b %d, %H:%M') if direct.created_at else '' }}</small>
+                    </div>
+                    <p class="mb-0 text-secondary">{{ direct.message }}</p>
+                    {% if direct.context_type %}
+                    <small class="text-muted">{{ direct.context_type }}</small>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

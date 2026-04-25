@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+
+{% block title %}Ride Details{% endblock %}
+
+{% block content %}
+<div class="row pt-2">
+    <div class="col-12 mb-3">
+        <a href="{{ url_for('browse_rides') }}" class="text-decoration-none"><i class="bi bi-arrow-left me-1"></i>Back to Rides</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-primary text-white py-3 d-flex justify-content-between align-items-center">
+                <h4 class="mb-0"><i class="bi bi-car-front-fill me-2 text-accent"></i>Ride Details</h4>
+                <div class="badge bg-accent text-dark border"><i class="bi bi-calendar-event me-1"></i>{{ ride.travel_date.strftime('%b %d, %Y') }}</div>
+            </div>
+            
+            <div class="card-body p-4">
+                <div class="row mb-4 align-items-center text-center">
+                    <div class="col-5">
+                        <h5 class="text-primary fw-bold mb-1">{{ ride.start_location }}</h5>
+                        <small class="text-muted">Departure</small>
+                    </div>
+                    <div class="col-2 text-primary fs-3">
+                        <i class="bi bi-arrow-right-circle-fill"></i>
+                    </div>
+                    <div class="col-5">
+                        <h5 class="text-primary fw-bold mb-1">{{ ride.destination }}</h5>
+                        <small class="text-muted">Destination</small>
+                    </div>
+                </div>
+
+                <div class="row mb-4 bg-light p-3 rounded">
+                    <div class="col-sm-4 text-center mb-3 mb-sm-0">
+                        <i class="bi bi-clock fs-4 text-primary d-block mb-1"></i>
+                        <span class="fw-bold d-block">{{ ride.travel_time.strftime('%I:%M %p') }}</span>
+                        <small class="text-muted">Departure Time</small>
+                    </div>
+                    <div class="col-sm-4 text-center border-start border-end mb-3 mb-sm-0">
+                        <i class="bi bi-people-fill fs-4 text-accent d-block mb-1"></i>
+                        <span class="fw-bold d-block">{{ ride.available_seats }} Seats</span>
+                        <small class="text-muted">Available</small>
+                    </div>
+                    <div class="col-sm-4 text-center">
+                        <i class="bi bi-cash-coin fs-4 text-success d-block mb-1"></i>
+                        <span class="fw-bold d-block">${{ "%.2f"|format(ride.cost_share) }}</span>
+                        <small class="text-muted">Cost Share</small>
+                    </div>
+                </div>
+
+                <h5 class="fw-bold text-primary border-bottom pb-2 mb-3">Additional Notes</h5>
+                <p class="mb-4">{{ ride.notes if ride.notes else 'No additional notes provided.' }}</p>
+
+                <h5 class="fw-bold text-primary border-bottom pb-2 mb-3">Contact Information</h5>
+                <p class="mb-4"><i class="bi bi-person-lines-fill me-2 text-accent"></i>{{ ride.contact_info }}</p>
+                <small class="text-muted d-block mb-4">Posted by User ID: {{ ride.user_id }} on {{ ride.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                
+                <hr>
+                {% if is_owner %}
+                <div class="mt-4">
+                    <h6 class="text-muted mb-3"><i class="bi bi-gear-fill me-1"></i>Manage Your Ride</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="{{ url_for('edit_ride', ride_id=ride.id) }}" class="btn btn-outline-primary">Edit Ride</a>
+                        <form method="POST" action="{{ url_for('delete_ride', ride_id=ride.id) }}" onsubmit="return confirm('Are you sure you want to delete this ride?');">
+                            <button type="submit" class="btn btn-outline-danger">Delete Ride</button>
+                        </form>
+                    </div>
+                </div>
+                {% else %}
+                <div class="mb-4">
+                    <h6 class="text-muted mb-3"><i class="bi bi-ticket-perforated-fill me-1"></i>Book a Seat</h6>
+                    {% if not current_user %}
+                    <p class="text-muted mb-3">Please log in to book a seat on this ride.</p>
+                    <a href="{{ url_for('login') }}" class="btn btn-accent">Login to Book</a>
+                    {% elif ride.available_seats < 1 %}
+                    <p class="text-muted mb-0">This ride is already full.</p>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('book_ride', ride_id=ride.id) }}" class="row g-2 align-items-end">
+                        <div class="col-auto">
+                            <label class="form-label small">Seats</label>
+                            <input type="number" name="seats" class="form-control" min="1" max="{{ ride.available_seats }}" value="1" required>
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label small">Contact</label>
+                            <input type="text" name="contact_info" class="form-control" placeholder="Phone or email" required value="{{ current_user.email if current_user else '' }}">
+                        </div>
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-accent">Book Seat</button>
+                        </div>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

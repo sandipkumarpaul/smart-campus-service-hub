@@ -64,6 +64,98 @@
     </div>
 
     <div class="col-md-8">
+        <div class="card p-4 shadow-sm mb-4 border-0 border-start border-4 border-warning">
+            <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
+                <div>
+                    <h3 class="mb-1 text-primary fw-bold">Top Rated Tutor Profiles</h3>
+                    <p class="text-muted mb-0">Profiles, reviews, contact forms, and map locations from the merged module.</p>
+                </div>
+                <div class="d-flex flex-column flex-lg-row gap-2 align-items-stretch align-items-lg-start">
+                    <form action="{{ url_for('tutors') }}" method="GET" class="d-flex flex-column flex-lg-row gap-2">
+                        <input
+                            type="text"
+                            name="major"
+                            class="form-control"
+                            placeholder="Department e.g. CSE"
+                            value="{{ selected_major or '' }}"
+                        >
+                        <input
+                            type="text"
+                            name="subject"
+                            class="form-control"
+                            placeholder="Subject e.g. CSE110"
+                            value="{{ selected_subject or '' }}"
+                        >
+                        <select name="min_rating" class="form-select">
+                            <option value="">Rating 1-5</option>
+                            <option value="5" {% if selected_min_rating == '5' %}selected{% endif %}>5</option>
+                            <option value="4" {% if selected_min_rating == '4' %}selected{% endif %}>4+</option>
+                            <option value="3" {% if selected_min_rating == '3' %}selected{% endif %}>3+</option>
+                            <option value="2" {% if selected_min_rating == '2' %}selected{% endif %}>2+</option>
+                            <option value="1" {% if selected_min_rating == '1' %}selected{% endif %}>1+</option>
+                        </select>
+                        <button type="submit" class="btn btn-outline-primary">Search</button>
+                        <a href="{{ url_for('tutors') }}" class="btn btn-outline-secondary">Reset</a>
+                    </form>
+                    <a href="{{ url_for('post_tutor') }}" class="btn btn-warning align-self-start">Post Tutor Profile</a>
+                </div>
+            </div>
+            {% if top_tutors %}
+                <div class="row g-3">
+                    {% for tutor_profile in top_tutors %}
+                    <div class="col-md-6">
+                        <div class="border rounded p-3 h-100">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <h5 class="mb-1 fw-bold">{{ tutor_profile.name }}</h5>
+                                    <small class="text-muted">{{ tutor_profile.subject }} | {{ tutor_profile.major }}</small>
+                                </div>
+                                <span class="badge bg-light text-dark border">{{ "%.1f"|format(tutor_profile.rating) }} / 5</span>
+                            </div>
+                            <p class="small text-secondary mb-3">{{ tutor_profile.bio|default('No bio added yet.', true)|truncate(120) }}</p>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <a href="{{ url_for('tutor_details', tutor_id=tutor_profile.id) }}" class="btn btn-sm btn-outline-primary">Details</a>
+                                <a href="{{ url_for('tutor_contact', tutor_id=tutor_profile.id) }}" class="btn btn-sm btn-outline-primary">Contact</a>
+                                <a href="{{ url_for('tutor_review', tutor_id=tutor_profile.id) }}" class="btn btn-sm btn-warning">Review</a>
+                                {% if not current_user or ((current_user.email|lower) != (tutor_profile.contact_info|lower) and (current_user.full_name|lower) != (tutor_profile.name|lower)) %}
+                                <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#topTutorBookForm{{ tutor_profile.id }}">Book Slot</button>
+                                {% endif %}
+                            </div>
+                            {% if not current_user or ((current_user.email|lower) != (tutor_profile.contact_info|lower) and (current_user.full_name|lower) != (tutor_profile.name|lower)) %}
+                            <div class="collapse mt-3" id="topTutorBookForm{{ tutor_profile.id }}">
+                                <div class="card card-body bg-light border-0">
+                                    <form action="{{ url_for('book_tutor_profile', tutor_id=tutor_profile.id) }}" method="POST" class="row g-2">
+                                        <input type="hidden" name="major" value="{{ selected_major or '' }}">
+                                        <input type="hidden" name="subject" value="{{ selected_subject or '' }}">
+                                        <input type="hidden" name="min_rating" value="{{ selected_min_rating or '' }}">
+                                        <div class="col-md-4">
+                                            <label class="small fw-bold">Date</label>
+                                            <input type="date" name="session_date" class="form-control form-control-sm" required>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="small fw-bold">Time</label>
+                                            <input type="time" name="start_time" class="form-control form-control-sm" required>
+                                        </div>
+                                        <div class="col-md-12">
+                                            <label class="small fw-bold">Note</label>
+                                            <input type="text" name="note" class="form-control form-control-sm" placeholder="What do you need help with?" required>
+                                        </div>
+                                        <div class="col-12">
+                                            <button type="submit" class="btn btn-success btn-sm w-100">Send Booking Request</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted mb-0">No reviewed tutor profiles yet. Keep the existing tutoring board below, or add a profile for reviews and map support.</p>
+            {% endif %}
+        </div>
+
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="mb-0">Find a Tutor</h2>
             <button class="btn btn-outline-secondary btn-sm">⚙️ Filters</button>

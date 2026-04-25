@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+
+{% block title %}Post a Tutor{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+    #tutorLocationMap {
+        height: 280px;
+        border-radius: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white py-3">
+                <h4 class="mb-0"><i class="bi bi-person-plus-fill me-2"></i>Post a Tutor</h4>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('post_tutor') }}" id="postTutorForm">
+                    {% if admin_token %}
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Admin Token (required)</label>
+                        <input type="password" name="admin_token" class="form-control" required>
+                    </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Name</label>
+                        <input type="text" name="name" class="form-control" required>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Major</label>
+                            <input type="text" name="major" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Subject</label>
+                            <input type="text" name="subject" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Bio</label>
+                        <textarea name="bio" class="form-control" rows="4"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Contact Info (email)</label>
+                        <input type="email" name="contact_info" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="tutorLocationText" class="form-label fw-bold">Teaching Location</label>
+                        <input type="text" id="tutorLocationText" name="location" class="form-control" placeholder="e.g. BRAC University Library, Dhaka">
+                        <div class="form-text">Add a real tutoring location so students can find you from the Nearby Student Services Map.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-outline-primary" id="findTutorLocationBtn">Find on Map</button>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <div class="small text-muted mb-2">Drag the marker or click the map to fine-tune the tutoring spot.</div>
+                            <div id="tutorLocationMap"></div>
+                        </div>
+                    </div>
+
+                    <input type="hidden" name="latitude" id="tutorLatitude">
+                    <input type="hidden" name="longitude" id="tutorLongitude">
+
+                    <div class="d-grid">
+                        <button class="btn btn-primary">Post Tutor</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+    const tutorForm = document.getElementById('postTutorForm');
+    const tutorLocationInput = document.getElementById('tutorLocationText');
+    const tutorLatitudeInput = document.getElementById('tutorLatitude');
+    const tutorLongitudeInput = document.getElementById('tutorLongitude');
+    const tutorFindBtn = document.getElementById('findTutorLocationBtn');
+    const tutorMap = L.map('tutorLocationMap').setView([23.7806, 90.4070], 16);
+    let tutorMarker = null;
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(tutorMap);
+
+    function setTutorMarker(lat, lng) {
+        if (tutorMarker) {
+            tutorMarker.setLatLng([lat, lng]);
+        } else {
+            tutorMarker = L.marker([lat, lng], { draggable: true }).addTo(tutorMap);
+            tutorMarker.on('dragend', () => {
+                const pos = tutorMarker.getLatLng();
+                tutorLatitudeInput.value = pos.lat;
+                tutorLongitudeInput.value = pos.lng;
+            });
+        }
+        tutorLatitudeInput.value = lat;
+        tutorLongitudeInput.value = lng;
+        tutorMap.setView([lat, lng], 17);
+    }
+
+    async function geocodeTutorAddress(address) {
+        const response = await fetch(`/api/geocode?q=${encodeURIComponent(address.trim())}`);
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error || 'Geocoding request failed');
+        }
+        return response.json();
+    }
+
+    async function findTutorLocation() {
+        if (!tutorLocationInput.value.trim()) {
+            alert('Enter a teaching location first.');
+            return;
+        }
+
+        try {
+            const result = await geocodeTutorAddress(tutorLocationInput.value.trim());
+            setTutorMarker(parseFloat(result.lat), parseFloat(result.lng));
+        } catch (error) {
+            alert(error.message || 'Could not find that tutoring location. Please enter a clearer address.');
+        }
+    }
+
+    async function geocodeTutorLocationIfNeeded(event) {
+        if (!tutorLocationInput.value.trim()) {
+            return true;
+        }
+
+        if (tutorLatitudeInput.value && tutorLongitudeInput.value) {
+            return true;
+        }
+
+        event.preventDefault();
+        try {
+            const result = await geocodeTutorAddress(tutorLocationInput.value.trim());
+            setTutorMarker(parseFloat(result.lat), parseFloat(result.lng));
+            tutorForm.submit();
+        } catch (error) {
+            alert(error.message || 'Could not find that tutoring location. Please enter a clearer address.');
+        }
+        return false;
+    }
+
+    tutorMap.on('click', (event) => {
+        setTutorMarker(event.latlng.lat, event.latlng.lng);
+    });
+
+    if (tutorFindBtn) {
+        tutorFindBtn.addEventListener('click', findTutorLocation);
+    }
+    if (tutorForm) {
+        tutorForm.addEventListener('submit', geocodeTutorLocationIfNeeded);
+    }
+</script>
+{% endblock %}

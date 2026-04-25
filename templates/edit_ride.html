@@ -1,0 +1,245 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Ride{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+    #editRideLocationMap {
+        height: 280px;
+        border-radius: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white py-3">
+                <h4 class="mb-0"><i class="bi bi-pencil-square me-2"></i>Edit Ride Share</h4>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('edit_ride', ride_id=ride.id) }}">
+                    <div class="row mb-3">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <label for="start_location" class="form-label fw-bold">Pickup Point / Start Location <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="start_location" id="start_location" value="{{ ride.start_location }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="destination" class="form-label fw-bold">Destination <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="destination" id="destination" value="{{ ride.destination }}" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <label for="travel_date" class="form-label fw-bold">Travel Date <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" name="travel_date" id="travel_date" value="{{ ride.travel_date }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="travel_time" class="form-label fw-bold">Travel Time <span class="text-danger">*</span></label>
+                            <input type="time" class="form-control" name="travel_time" id="travel_time" value="{{ ride.travel_time.strftime('%H:%M') }}" required>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <label for="available_seats" class="form-label fw-bold">Available Seats <span class="text-danger">*</span></label>
+                            <input type="number" min="1" max="10" class="form-control" name="available_seats" id="available_seats" value="{{ ride.available_seats }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="cost_share" class="form-label fw-bold">Cost Share Amount ($) <span class="text-danger">*</span></label>
+                            <input type="number" step="0.01" min="0" class="form-control" name="cost_share" id="cost_share" value="{{ ride.cost_share }}" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="notes" class="form-label fw-bold">Additional Notes</label>
+                        <textarea class="form-control" name="notes" id="notes" rows="3">{{ ride.notes }}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-outline-primary" id="findEditRideLocationBtn">Find on Map</button>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <div class="small text-muted mb-2">
+                                {% if ride.latitude and ride.longitude %}
+                                Current pickup point: {{ ride.latitude }}, {{ ride.longitude }}. Drag the marker or click the map to fine-tune it.
+                                {% else %}
+                                No pickup point saved yet. Use the ride start location field and place it on the map below.
+                                {% endif %}
+                            </div>
+                            <div id="editRideLocationMap"></div>
+                        </div>
+                    </div>
+
+                    <input type="hidden" name="latitude" id="ride_latitude" value="{{ ride.latitude or '' }}">
+                    <input type="hidden" name="longitude" id="ride_longitude" value="{{ ride.longitude or '' }}">
+                    <input type="hidden" name="destination_latitude" id="destination_latitude" value="{{ ride.destination_latitude or '' }}">
+                    <input type="hidden" name="destination_longitude" id="destination_longitude" value="{{ ride.destination_longitude or '' }}">
+
+                    <div class="mb-4">
+                        <label for="contact_info" class="form-label fw-bold">How to Contact You <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="contact_info" id="contact_info" value="{{ ride.contact_info }}" required>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('ride_details', ride_id=ride.id) }}" class="btn btn-outline-secondary px-4">Cancel</a>
+                        <button type="submit" class="btn btn-primary px-4 fw-bold">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+    const editRideForm = document.querySelector('form[action="{{ url_for('edit_ride', ride_id=ride.id) }}"]');
+    const editPickupLocationInput = document.getElementById('start_location');
+    const editDestinationInput = document.getElementById('destination');
+    const editRideLatInput = document.getElementById('ride_latitude');
+    const editRideLngInput = document.getElementById('ride_longitude');
+    const editDestinationLatInput = document.getElementById('destination_latitude');
+    const editDestinationLngInput = document.getElementById('destination_longitude');
+    const editRideFindBtn = document.getElementById('findEditRideLocationBtn');
+    const editRideLocationMap = L.map('editRideLocationMap').setView([{{ ride.latitude or 23.7806 }}, {{ ride.longitude or 90.4070 }}], 16);
+    let editSourceMarker = null;
+    let editDestinationMarker = null;
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(editRideLocationMap);
+
+    function fitEditRideMarkers() {
+        const points = [];
+        if (editSourceMarker) points.push(editSourceMarker.getLatLng());
+        if (editDestinationMarker) points.push(editDestinationMarker.getLatLng());
+        if (!points.length) return;
+        if (points.length === 1) {
+            editRideLocationMap.setView(points[0], 17);
+            return;
+        }
+        editRideLocationMap.fitBounds(L.latLngBounds(points), { padding: [30, 30] });
+    }
+
+    function setEditSourceMarker(lat, lng) {
+        if (editSourceMarker) {
+            editSourceMarker.setLatLng([lat, lng]);
+        } else {
+            editSourceMarker = L.marker([lat, lng], { draggable: true }).addTo(editRideLocationMap);
+            editSourceMarker.bindPopup('Source / Pickup Point');
+            editSourceMarker.on('dragend', () => {
+                const pos = editSourceMarker.getLatLng();
+                editRideLatInput.value = pos.lat;
+                editRideLngInput.value = pos.lng;
+            });
+        }
+        editRideLatInput.value = lat;
+        editRideLngInput.value = lng;
+        fitEditRideMarkers();
+    }
+
+    function setEditDestinationMarker(lat, lng) {
+        if (editDestinationMarker) {
+            editDestinationMarker.setLatLng([lat, lng]);
+        } else {
+            editDestinationMarker = L.marker([lat, lng], { draggable: true }).addTo(editRideLocationMap);
+            editDestinationMarker.bindPopup('Destination');
+            editDestinationMarker.on('dragend', () => {
+                const pos = editDestinationMarker.getLatLng();
+                editDestinationLatInput.value = pos.lat;
+                editDestinationLngInput.value = pos.lng;
+            });
+        }
+        editDestinationLatInput.value = lat;
+        editDestinationLngInput.value = lng;
+        fitEditRideMarkers();
+    }
+
+    async function geocodeAddress(address) {
+        const response = await fetch(`/api/geocode?q=${encodeURIComponent(address.trim())}`);
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error || 'Geocoding request failed');
+        }
+        return response.json();
+    }
+
+    async function findEditedRideLocation() {
+        if (!editPickupLocationInput.value.trim()) {
+            alert('Enter a pickup point first.');
+            return;
+        }
+
+        try {
+            if (!editDestinationInput.value.trim()) {
+                alert('Enter a destination too so both route points can be placed on the map.');
+                return;
+            }
+            const [pickupResult, destinationResult] = await Promise.all([
+                geocodeAddress(editPickupLocationInput.value.trim()),
+                geocodeAddress(editDestinationInput.value.trim())
+            ]);
+            setEditSourceMarker(parseFloat(pickupResult.lat), parseFloat(pickupResult.lng));
+            setEditDestinationMarker(parseFloat(destinationResult.lat), parseFloat(destinationResult.lng));
+        } catch (error) {
+            alert(error.message || 'Could not find that ride pickup point. Please enter a clearer address.');
+        }
+    }
+
+    async function geocodeEditedRideLocation(event) {
+        if (!editPickupLocationInput.value.trim()) {
+            return true;
+        }
+
+        event.preventDefault();
+        try {
+            const [pickupResult, destinationResult] = await Promise.all([
+                geocodeAddress(editPickupLocationInput.value.trim()),
+                geocodeAddress(editDestinationInput.value.trim())
+            ]);
+            setEditSourceMarker(parseFloat(pickupResult.lat), parseFloat(pickupResult.lng));
+            setEditDestinationMarker(parseFloat(destinationResult.lat), parseFloat(destinationResult.lng));
+            editRideForm.submit();
+        } catch (error) {
+            alert(error.message || 'Could not find the ride pickup point or destination. Please enter clearer addresses.');
+        }
+        return false;
+    }
+
+    if (editRideForm) {
+        editRideForm.addEventListener('submit', geocodeEditedRideLocation);
+    }
+    if (editRideFindBtn) {
+        editRideFindBtn.addEventListener('click', findEditedRideLocation);
+    }
+    if (editPickupLocationInput) {
+        editPickupLocationInput.addEventListener('input', () => {
+            editRideLatInput.value = '';
+            editRideLngInput.value = '';
+        });
+    }
+    if (editDestinationInput) {
+        editDestinationInput.addEventListener('input', () => {
+            editDestinationLatInput.value = '';
+            editDestinationLngInput.value = '';
+        });
+    }
+    if (editRideLatInput.value && editRideLngInput.value) {
+        setEditSourceMarker(parseFloat(editRideLatInput.value), parseFloat(editRideLngInput.value));
+    }
+    if (editDestinationLatInput.value && editDestinationLngInput.value) {
+        setEditDestinationMarker(parseFloat(editDestinationLatInput.value), parseFloat(editDestinationLngInput.value));
+    }
+    editRideLocationMap.on('click', (event) => {
+        setEditSourceMarker(event.latlng.lat, event.latlng.lng);
+    });
+</script>
+{% endblock %}

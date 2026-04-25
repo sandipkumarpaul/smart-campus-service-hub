@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+{% block title %}Campus Ride Share{% endblock %}
+
+{% block content %}
+<div class="row mb-4 align-items-center">
+    <div class="col-md-8">
+        <h2 class="text-primary fw-bold"><i class="bi bi-car-front-fill me-2 text-accent"></i>Campus Ride Share</h2>
+        <p class="text-muted">Find a ride or share your journey with other students. Share the cost and make friends!</p>
+    </div>
+    <div class="col-md-4 text-md-end text-start mt-3 mt-md-0">
+        <a href="{{ url_for('post_ride') }}" class="btn btn-accent px-4 py-2 shadow-sm">
+            <i class="bi bi-plus-circle me-2"></i>Post a Ride
+        </a>
+    </div>
+</div>
+
+<div class="card p-4 mb-4">
+    <form method="GET" action="{{ url_for('browse_rides') }}" class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label" for="route"><i class="bi bi-signpost-split me-1"></i>Route Keyword</label>
+            <input type="text" name="route" id="route" class="form-control" placeholder="City or Campus" value="{{ request.args.get('route', '') }}">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" for="date"><i class="bi bi-calendar-event me-1"></i>Date</label>
+            <input type="date" name="date" id="date" class="form-control" value="{{ request.args.get('date', '') }}">
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search me-2"></i>Search</button>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+            <input type="number" min="1" name="min_seats" class="form-control" placeholder="Min Seats" value="{{ request.args.get('min_seats', '') }}">
+        </div>
+    </form>
+</div>
+
+<div class="row g-4">
+    {% for ride in rides %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 border-0 shadow-sm ride-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-3 border-bottom pb-2">
+                    <span class="badge bg-primary rounded-pill px-3 py-2"><i class="bi bi-calendar-check me-1"></i>{{ ride.travel_date.strftime('%b %d, %Y') }}</span>
+                    <span class="badge bg-light text-dark rounded-pill px-3 py-2 border"><i class="bi bi-clock me-1"></i>{{ ride.travel_time.strftime('%I:%M %p') }}</span>
+                </div>
+                <h5 class="card-title text-primary mb-2fw-bold">{{ ride.start_location }} <i class="bi bi-arrow-right mx-1 text-accent"></i> {{ ride.destination }}</h5>
+                
+                <div class="d-flex mb-3 text-muted small">
+                    <div class="me-3"><i class="bi bi-people-fill text-accent me-1"></i>{{ ride.available_seats }} Seats</div>
+                    <div><i class="bi bi-cash-coin text-success me-1"></i>${{ "%.2f"|format(ride.cost_share) }}</div>
+                </div>
+                
+                <p class="card-text text-truncate small mb-3">{{ ride.notes }}</p>
+                
+                <a href="{{ url_for('ride_details', ride_id=ride.id) }}" class="btn btn-outline-primary w-100 mt-auto">View Details</a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12 text-center py-5">
+        <i class="bi bi-car-front text-muted fs-1 mb-3 d-block"></i>
+        <h4 class="text-muted">No rides available currently.</h4>
+        <p>Try adjusting your search criteria or be the first to post a ride!</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

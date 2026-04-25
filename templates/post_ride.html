@@ -1,0 +1,249 @@
+{% extends 'base.html' %}
+
+{% block title %}Post a Ride{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+    #rideLocationMap {
+        height: 280px;
+        border-radius: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white py-3">
+                <h4 class="mb-0"><i class="bi bi-plus-circle me-2"></i>Post a Ride Share</h4>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('post_ride') }}">
+                    <div class="row mb-3">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <label for="start_location" class="form-label fw-bold">Pickup Point / Start Location <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="start_location" id="start_location" placeholder="e.g. BRAC University Main Gate, Dhaka" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="destination" class="form-label fw-bold">Destination <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="destination" id="destination" placeholder="e.g. Downtown Target" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <label for="travel_date" class="form-label fw-bold">Travel Date <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" name="travel_date" id="travel_date" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="travel_time" class="form-label fw-bold">Travel Time <span class="text-danger">*</span></label>
+                            <input type="time" class="form-control" name="travel_time" id="travel_time" required>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <label for="available_seats" class="form-label fw-bold">Available Seats <span class="text-danger">*</span></label>
+                            <input type="number" min="1" max="10" class="form-control" name="available_seats" id="available_seats" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="cost_share" class="form-label fw-bold">Cost Share Amount ($) <span class="text-danger">*</span></label>
+                            <input type="number" step="0.01" min="0" class="form-control" name="cost_share" id="cost_share" placeholder="0.00" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="notes" class="form-label fw-bold">Additional Notes</label>
+                        <textarea class="form-control" name="notes" id="notes" rows="3" placeholder="Any preferences, luggage space, etc."></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-outline-primary" id="findRideLocationBtn">Find on Map</button>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-4">
+                        <div class="card-body">
+                            <div class="small text-muted mb-2">This pickup point is used for the ride share marker and route source. Drag the marker or click the map to fix the exact spot.</div>
+                            <div id="rideLocationMap"></div>
+                        </div>
+                    </div>
+
+                    <input type="hidden" name="latitude" id="ride_latitude">
+                    <input type="hidden" name="longitude" id="ride_longitude">
+                    <input type="hidden" name="destination_latitude" id="destination_latitude">
+                    <input type="hidden" name="destination_longitude" id="destination_longitude">
+
+                    <hr class="my-4">
+                    <h5 class="text-primary mb-3">Contact Information</h5>
+
+                    <div class="mb-4">
+                        <label for="contact_info" class="form-label fw-bold">How to Contact You <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="contact_info" id="contact_info" placeholder="Phone number or preferred contact method" required value="{{ current_user.email if current_user else '' }}">
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary py-2 fw-bold text-uppercase">Post Ride</button>
+                        <a href="{{ url_for('browse_rides') }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+    const rideForm = document.querySelector('form[action="{{ url_for('post_ride') }}"]');
+    const pickupLocationInput = document.getElementById('start_location');
+    const destinationInput = document.getElementById('destination');
+    const rideLatInput = document.getElementById('ride_latitude');
+    const rideLngInput = document.getElementById('ride_longitude');
+    const destinationLatInput = document.getElementById('destination_latitude');
+    const destinationLngInput = document.getElementById('destination_longitude');
+    const rideFindBtn = document.getElementById('findRideLocationBtn');
+    const rideLocationMap = L.map('rideLocationMap').setView([23.7806, 90.4070], 16);
+    let sourceMarker = null;
+    let destinationMarker = null;
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(rideLocationMap);
+
+    function fitRideMarkers() {
+        const points = [];
+        if (sourceMarker) points.push(sourceMarker.getLatLng());
+        if (destinationMarker) points.push(destinationMarker.getLatLng());
+        if (!points.length) return;
+        if (points.length === 1) {
+            rideLocationMap.setView(points[0], 17);
+            return;
+        }
+        rideLocationMap.fitBounds(L.latLngBounds(points), { padding: [30, 30] });
+    }
+
+    function setSourceMarker(lat, lng) {
+        if (sourceMarker) {
+            sourceMarker.setLatLng([lat, lng]);
+        } else {
+            sourceMarker = L.marker([lat, lng], { draggable: true }).addTo(rideLocationMap);
+            sourceMarker.bindPopup('Source / Pickup Point');
+            sourceMarker.on('dragend', () => {
+                const pos = sourceMarker.getLatLng();
+                rideLatInput.value = pos.lat;
+                rideLngInput.value = pos.lng;
+            });
+        }
+        rideLatInput.value = lat;
+        rideLngInput.value = lng;
+        fitRideMarkers();
+    }
+
+    function setDestinationMarker(lat, lng) {
+        if (destinationMarker) {
+            destinationMarker.setLatLng([lat, lng]);
+        } else {
+            destinationMarker = L.marker([lat, lng], {
+                draggable: true,
+                icon: L.icon({
+                    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowSize: [41, 41]
+                })
+            }).addTo(rideLocationMap);
+            destinationMarker.bindPopup('Destination');
+            destinationMarker.on('dragend', () => {
+                const pos = destinationMarker.getLatLng();
+                destinationLatInput.value = pos.lat;
+                destinationLngInput.value = pos.lng;
+            });
+        }
+        destinationLatInput.value = lat;
+        destinationLngInput.value = lng;
+        fitRideMarkers();
+    }
+
+    async function geocodeAddress(address) {
+        const response = await fetch(`/api/geocode?q=${encodeURIComponent(address.trim())}`);
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error || 'Geocoding request failed');
+        }
+        return response.json();
+    }
+
+    async function findRideLocation() {
+        if (!pickupLocationInput.value.trim()) {
+            alert('Enter a pickup point first.');
+            return;
+        }
+
+        try {
+            if (!destinationInput.value.trim()) {
+                alert('Enter a destination too so both route points can be placed on the map.');
+                return;
+            }
+            const [pickupResult, destinationResult] = await Promise.all([
+                geocodeAddress(pickupLocationInput.value.trim()),
+                geocodeAddress(destinationInput.value.trim())
+            ]);
+            setSourceMarker(parseFloat(pickupResult.lat), parseFloat(pickupResult.lng));
+            setDestinationMarker(parseFloat(destinationResult.lat), parseFloat(destinationResult.lng));
+        } catch (error) {
+            alert(error.message || 'Could not find the ride pickup point or destination. Please enter clearer addresses.');
+        }
+    }
+
+    async function geocodeRideLocation(event) {
+        if (!pickupLocationInput.value.trim()) {
+            return true;
+        }
+
+        if (rideLatInput.value && rideLngInput.value && destinationLatInput.value && destinationLngInput.value) {
+            return true;
+        }
+
+        event.preventDefault();
+        try {
+            const [pickupResult, destinationResult] = await Promise.all([
+                geocodeAddress(pickupLocationInput.value.trim()),
+                geocodeAddress(destinationInput.value.trim())
+            ]);
+            setSourceMarker(parseFloat(pickupResult.lat), parseFloat(pickupResult.lng));
+            setDestinationMarker(parseFloat(destinationResult.lat), parseFloat(destinationResult.lng));
+            rideForm.submit();
+        } catch (error) {
+            alert(error.message || 'Could not find the ride pickup point or destination. Please enter clearer addresses.');
+        }
+        return false;
+    }
+
+    if (rideForm) {
+        rideForm.addEventListener('submit', geocodeRideLocation);
+    }
+    if (rideFindBtn) {
+        rideFindBtn.addEventListener('click', findRideLocation);
+    }
+    if (pickupLocationInput) {
+        pickupLocationInput.addEventListener('input', () => {
+            rideLatInput.value = '';
+            rideLngInput.value = '';
+        });
+    }
+    if (destinationInput) {
+        destinationInput.addEventListener('input', () => {
+            destinationLatInput.value = '';
+            destinationLngInput.value = '';
+        });
+    }
+    rideLocationMap.on('click', (event) => {
+        setSourceMarker(event.latlng.lat, event.latlng.lng);
+    });
+</script>
+{% endblock %}
