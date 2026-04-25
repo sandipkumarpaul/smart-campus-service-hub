@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Browse Items - Smart Campus Service Hub{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-4">
+    <h2 class="text-primary-custom">Campus Marketplace</h2>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('post_item') }}" class="btn btn-primary">Post Item</a>
+        <a href="{{ url_for('my_listings') }}" class="btn btn-outline-primary">My Listing</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('browse') }}" class="row g-2 align-items-end">
+            <div class="col-md-9">
+                <label for="q" class="form-label fw-bold">Search by Product Name</label>
+                <input type="text" id="q" name="q" class="form-control" placeholder="e.g. textbook, watch, calculator" value="{{ search_query or '' }}">
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-outline-primary w-100">Search Item</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+    <!-- Loop through all the real items sent from the Python database query -->
+    {% for item in items %}
+    <div class="col">
+        <div class="card card-surface h-100 overflow-hidden">
+            <!-- Item Image -->
+            <!-- If the user uploaded an image, show it from our uploads folder. Else show a placeholder. -->
+            {% if item.image_filename %}
+                <img src="{{ url_for('static', filename='uploads/' + item.image_filename) }}" class="card-img-top" alt="{{ item.title }}" style="height: 200px; object-fit: cover;">
+            {% else %}
+                <img src="https://dummyimage.com/400x300/1E3A8A/FBBF24&text=No+Photo" class="card-img-top" alt="No Image" style="height: 200px; object-fit: cover;">
+            {% endif %}
+            
+            <div class="card-body d-flex flex-column">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h5 class="card-title mb-0 fw-bold">{{ item.title }}</h5>
+                    <span class="fs-5 text-primary-custom fw-bold px-2 py-1 bg-accent-custom rounded-3 shadow-sm">${{ "%.2f"|format(item.price) }}</span>
+                </div>
+                
+                <!-- Category and Condition Badges -->
+                <div class="mb-3">
+                    <span class="badge bg-secondary me-1">{{ item.category }}</span>
+                    <span class="badge text-bg-light border">{{ item.condition }}</span>
+                </div>
+                
+                <!-- Description (Using the "truncate" filter so long paragraphs don't break the uniform card size) -->
+                <p class="card-text text-muted flex-grow-1">{{ item.description | truncate(80) }}</p>
+                
+                <!-- View Details link using the item.id variable -->
+                <!-- Flask generates something like: href="/item/5" automatically! -->
+                <a href="{{ url_for('item_details', item_id=item.id) }}" class="btn btn-outline-primary w-100 mt-auto">View Item Details</a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- This block runs if the database query returns 0 items -->
+    <div class="col-12 text-center py-5">
+        <i class="bi bi-emoji-frown text-muted" style="font-size: 3rem;"></i>
+        <h4 class="mt-3 text-muted">No items available right now.</h4>
+        {% if search_query %}
+        <p>No product found for "{{ search_query }}". Try another name.</p>
+        {% else %}
+        <p>Check back later or be the first to post something from the Home page!</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,92 @@
+/* Color Palette Definitions */
+:root {
+    --primary-color: #1E3A8A;
+    --accent-color: #FBBF24;
+    --bg-color: #F8FAFC;
+    --surface-color: #FFFFFF;
+    --text-color: #1E293B;
+}
+
+/* Global Styles */
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+/* Typography Overrides */
+h1, h2, h3, h4, h5, h6 {
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+/* Background Color Class Utilities */
+.bg-primary-custom {
+    background-color: var(--primary-color) !important;
+}
+.bg-accent-custom {
+    background-color: var(--accent-color) !important;
+}
+
+/* Text Color Class Utilities */
+.text-accent {
+    color: var(--accent-color) !important;
+}
+.text-primary-custom {
+    color: var(--primary-color) !important;
+}
+
+/* Navbar Customizations */
+.custom-navbar {
+    background-color: var(--primary-color) !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.custom-navbar .nav-link {
+    font-weight: 500;
+}
+
+.custom-navbar .nav-link:hover, .custom-navbar .navbar-brand:hover {
+    color: var(--accent-color) !important;
+}
+
+/* Custom Buttons */
+.btn-primary-custom {
+    background-color: var(--primary-color);
+    color: #ffffff;
+    border: none;
+    font-weight: 600;
+    transition: all 0.2s ease-in-out;
+}
+
+.btn-primary-custom:hover {
+    background-color: #172a6b; /* Slightly darker shade */
+    color: var(--accent-color);
+    transform: translateY(-2px);
+}
+
+/* Product Cards Styling */
+.card-surface {
+    background-color: var(--surface-color);
+    border: none;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card-surface:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+.card-title {
+    color: var(--text-color);
+}
+
+/* Footer Customizations */
+.custom-footer {
+    background-color: var(--primary-color) !important;
+}
+
+.custom-footer h5 {
+    color: var(--accent-color);
+}

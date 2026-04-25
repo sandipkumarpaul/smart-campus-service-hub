@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block title %}Review {{ tutor.name }} - Smart Campus Service Hub{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card card-surface p-4">
+            <h3 class="text-primary fw-bold">Review {{ tutor.name }}</h3>
+            <p class="text-muted">Share your experience and help other students find great tutors.</p>
+
+            <form method="POST" action="{{ url_for('tutor_review', tutor_id=tutor.id) }}">
+                <div class="mb-3">
+                    <label class="form-label">Your Student ID or Name</label>
+                    <input type="text" name="student_id" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Rating (1-5)</label>
+                    <select name="rating" class="form-select" required>
+                        <option value="">Choose...</option>
+                        {% for i in range(1,6) %}
+                        <option value="{{ i }}">{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Optional Review</label>
+                    <textarea name="review" class="form-control" rows="4"></textarea>
+                </div>
+                <div class="d-grid">
+                    <button class="btn btn-primary">Submit Review</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

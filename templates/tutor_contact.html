@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+
+{% block title %}Contact Tutor{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white py-3">
+                <h4 class="mb-0">Contact {{ tutor.name }}</h4>
+            </div>
+            <div class="card-body p-4">
+                <p class="small text-muted">Subject: <strong>{{ tutor.subject }}</strong> — Major: <strong>{{ tutor.major }}</strong></p>
+                <form method="POST" action="{{ url_for('tutor_contact', tutor_id=tutor.id) }}">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Your Identifier (email or netID)</label>
+                        <input type="text" name="student_id" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Your Contact (email or phone)</label>
+                        <input type="text" name="student_contact" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Subject</label>
+                        <input type="text" name="subject" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Message</label>
+                        <textarea name="message" class="form-control" rows="5" required></textarea>
+                    </div>
+                    <div class="d-grid">
+                        <button class="btn btn-accent">Send Message</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

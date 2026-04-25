@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+
+{% block title %}Academic Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-1" style="color: #1E3A8A;">Academic Dashboard</h2>
+        <p class="text-muted mb-0">Notes, deadlines, and scheduled study sessions in one place.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('upload_notes') }}" class="btn btn-primary-custom">
+            <i class="bi bi-file-earmark-arrow-up me-1"></i>Upload Notes
+        </a>
+        <a href="{{ url_for('deadlines') }}" class="btn btn-outline-primary">
+            <i class="bi bi-calendar-plus me-1"></i>Manage Deadlines
+        </a>
+    </div>
+</div>
+
+<div class="surface-card mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="fw-bold mb-0">Notes Uploaded</h4>
+        <span class="badge bg-primary rounded-pill">{{ note_cards|length }}</span>
+    </div>
+    {% include '_note_cards.html' %}
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="surface-card h-100">
+            <h4 class="fw-bold mb-3">Active Deadlines</h4>
+            {% for dl in active_deadlines %}
+            <div class="border-bottom py-3">
+                <div class="d-flex justify-content-between gap-3">
+                    <div>
+                        <h6 class="fw-bold mb-1">{{ dl.title }}</h6>
+                        <p class="text-muted small mb-1">{{ dl.description or 'No description' }}</p>
+                    </div>
+                    <span class="badge {% if dl.priority == 'high' %}bg-danger{% elif dl.priority == 'medium' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %} align-self-start">
+                        {{ dl.priority|capitalize }}
+                    </span>
+                </div>
+                <small class="text-primary">
+                    <i class="bi bi-calendar-event me-1"></i>{{ dl.deadline_datetime.strftime('%b %d, %Y - %I:%M %p') }}
+                </small>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No active deadlines.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="surface-card h-100">
+            <h4 class="fw-bold mb-3">Completed Deadlines</h4>
+            {% for dl in completed_deadlines %}
+            <div class="border-bottom py-3">
+                <h6 class="fw-bold mb-1">{{ dl.title }}</h6>
+                <p class="text-muted small mb-1">{{ dl.description or 'No description' }}</p>
+                <small class="text-success">
+                    <i class="bi bi-check-circle me-1"></i>{{ dl.deadline_datetime.strftime('%b %d, %Y - %I:%M %p') }}
+                </small>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No completed deadlines yet.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="surface-card mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="fw-bold mb-0">Scheduled Sessions</h4>
+        <span class="badge bg-primary rounded-pill">{{ scheduled_sessions|length }}</span>
+    </div>
+    {% if scheduled_sessions %}
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Title</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Mode</th>
+                    <th>Meeting</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for study_session in scheduled_sessions %}
+                <tr>
+                    <td>
+                        <div class="fw-semibold">{{ study_session.title }}</div>
+                        <small class="text-muted">{{ study_session.description or 'No description' }}</small>
+                    </td>
+                    <td>{{ study_session.session_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ study_session.start_time.strftime('%I:%M %p') }} - {{ study_session.end_time.strftime('%I:%M %p') }}</td>
+                    <td>{{ study_session.mode|capitalize }}</td>
+                    <td>
+                        {% if study_session.meeting_link %}
+                        <a href="{{ study_session.meeting_link }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">Open</a>
+                        {% else %}
+                        <span class="text-muted small">Not available</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">No sessions scheduled yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
