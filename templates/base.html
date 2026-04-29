@@ -104,7 +104,8 @@
                         <li><a class="dropdown-item" href="{{ url_for('post_item') }}">Post an Item</a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="{{ url_for('tutors') }}">Peer Tutoring</a></li>
-                        <li><a class="dropdown-item" href="{{ url_for('post_tutor') }}">Post Tutor Profile</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('top_rated_tutors') }}">Top Rated Tutors</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('skill_exchange') }}">Skill Exchange</a></li>
                     </ul>
                 </li>
                 <li class="nav-item dropdown">
@@ -125,8 +126,18 @@
                     <li class="nav-item">
                         <a class="nav-link fw-bold" href="{{ url_for('map_view') }}"><i class="bi bi-geo-alt me-1"></i>Ride Map</a>
                     </li>
+                    {% if session.get('is_admin') %}
                     <li class="nav-item">
-                        <a class="nav-link fw-bold" href="{{ url_for('messages') }}"><i class="bi bi-chat-dots me-1"></i>Messages</a>
+                        <a class="nav-link fw-bold" href="{{ url_for('admin_reports') }}">Admin Panel</a>
+                    </li>
+                    {% endif %}
+                    <li class="nav-item">
+                        <a class="nav-link fw-bold" href="{{ url_for('messages') }}">
+                            <i class="bi bi-chat-dots me-1"></i>Messages
+                            {% if global_unread_count and global_unread_count > 0 %}
+                                <span class="badge bg-danger rounded-pill ms-1">{{ global_unread_count }}</span>
+                            {% endif %}
+                        </a>
                     </li>
                     <li class="nav-item">
                         <a class="btn btn-sm btn-outline-light ms-2" href="{{ url_for('logout') }}">Logout</a>
@@ -167,6 +178,8 @@
             <div class="col-md-4 mb-3 mb-md-0">
                 <h5>Quick Links</h5>
                 <a href="{{ url_for('tutors') }}" class="d-block text-decoration-none">Browse Tutors</a>
+                <a href="{{ url_for('top_rated_tutors') }}" class="d-block text-decoration-none">Top Rated Tutors</a>
+                <a href="{{ url_for('skill_exchange') }}" class="d-block text-decoration-none">Skill Exchange</a>
                 <a href="{{ url_for('browse') }}" class="d-block text-decoration-none">Buy & Sell</a>
                 <a href="{{ url_for('browse_rides') }}" class="d-block text-decoration-none">Ride Share</a>
                 <a href="{{ url_for('map_view') }}" class="d-block text-decoration-none">Ride Share Map</a>
