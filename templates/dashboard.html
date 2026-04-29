@@ -72,12 +72,12 @@
             <div class="surface-card h-100">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <div>
-                        <p class="text-muted mb-1">Tutor Profiles</p>
+                        <p class="text-muted mb-1">Tutoring Listings</p>
                         <h3 class="fw-bold mb-0">{{ stats['top_tutors'] }}</h3>
                     </div>
                     <i class="bi bi-star fs-2 text-warning"></i>
                 </div>
-                <a href="{{ url_for('post_tutor') }}" class="btn btn-sm btn-outline-primary mt-2">Post Tutor Profile</a>
+                <a href="{{ url_for('tutors') }}" class="btn btn-sm btn-outline-primary mt-2">Open Peer Tutoring</a>
             </div>
         </div>
         <div class="col-md-3">
@@ -96,6 +96,32 @@
 
     <div class="row">
         <div class="col-lg-8">
+
+            {% if incoming_proposals %}
+            <div class="card shadow-sm mb-4 border-0 border-start border-4 border-info">
+                <div class="card-body">
+                    <h5 class="fw-bold text-dark mb-3">Incoming Skill Proposals</h5>
+                    <div class="list-group list-group-flush">
+                        {% for proposal in incoming_proposals %}
+                        <div class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-0 fw-bold">{{ proposal.proposer.full_name }}</h6>
+                                <small class="text-muted">wants to trade skills for your <strong>{{ proposal.skill.offering_skill }}</strong> post.</small>
+                            </div>
+                            <div>
+                                <form action="{{ url_for('handle_proposal', proposal_id=proposal.id, action='accept') }}" method="POST" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-success fw-bold">Accept</button>
+                                </form>
+                                <form action="{{ url_for('handle_proposal', proposal_id=proposal.id, action='decline') }}" method="POST" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger fw-bold ms-1">Decline</button>
+                                </form>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
 
             <div class="card shadow-sm mb-4 border-0">
                 <div class="card-header bg-white border-bottom-0 pt-4 pb-0 d-flex justify-content-between align-items-center">
@@ -119,10 +145,37 @@
                         <li class="nav-item" role="presentation">
                             <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#study-tab">Study Groups</button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#skill-tab">Skill Exchange</button>
+                        </li>
                     </ul>
                     
                     <div class="tab-content" id="myTabContent">
                         <div class="tab-pane fade show active" id="tutors-tab">
+                            {% if incoming_tutor_requests %}
+                            <div class="alert alert-warning py-2">
+                                <div class="fw-bold mb-2">Incoming tutoring requests</div>
+                                {% for request_item in incoming_tutor_requests %}
+                                <div class="d-flex flex-column flex-md-row justify-content-between gap-2 border-top pt-2 mt-2">
+                                    <div>
+                                        <div class="fw-semibold">{{ request_item.listing.subject_title }}</div>
+                                        <small class="text-muted">{{ request_item.student.full_name if request_item.student else 'Student' }} requested {{ request_item.session_date }} at {{ request_item.start_time }}</small>
+                                        {% if request_item.note %}
+                                        <div class="small text-secondary">{{ request_item.note }}</div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="d-flex gap-2 align-items-start">
+                                        <form action="{{ url_for('handle_tutor_request', booking_id=request_item.id, action='accept') }}" method="POST">
+                                            <button class="btn btn-sm btn-success" type="submit">Accept</button>
+                                        </form>
+                                        <form action="{{ url_for('handle_tutor_request', booking_id=request_item.id, action='decline') }}" method="POST">
+                                            <button class="btn btn-sm btn-outline-danger" type="submit">Decline</button>
+                                        </form>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                             {% for tutor in tutors %}
                             <div class="d-flex justify-content-between align-items-center border-bottom py-2">
                                 <div>
@@ -147,6 +200,20 @@
                             </div>
                             {% else %}
                             <p class="text-muted small mt-2">You haven't posted any study partner requests.</p>
+                            {% endfor %}
+                        </div>
+
+                        <div class="tab-pane fade" id="skill-tab">
+                            {% for skill in skills %}
+                            <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                                <div>
+                                    <h6 class="mb-0 fw-bold">{{ skill.offering_skill }}</h6>
+                                    <small class="text-muted">Seeking: {{ skill.seeking_skill }}</small>
+                                </div>
+                                <span class="badge {% if skill.status == 'Matched' %}bg-secondary{% else %}bg-success{% endif %}">{{ skill.status }}</span>
+                            </div>
+                            {% else %}
+                            <p class="text-muted small mt-2">You haven't posted any skill swaps.</p>
                             {% endfor %}
                         </div>
                     </div>
@@ -205,6 +272,27 @@
                     </div>
                 </div>
             </div>
+
+            <div class="card shadow-sm mb-4 border-0 border-start border-4 border-danger">
+                <div class="card-body">
+                    <h5 class="fw-bold text-dark mb-3">My Support Tickets</h5>
+                    <div class="list-group list-group-flush">
+                        {% for report in reports %}
+                        <div class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-0 fw-bold">Ticket #{{ report.id }}</h6>
+                                <small class="text-muted">Reported a {{ report.reported_type }}</small>
+                            </div>
+                            <span class="badge {% if 'Approved' in report.status %}bg-success{% elif 'Rejected' in report.status %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                {{ report.status }}
+                            </span>
+                        </div>
+                        {% else %}
+                        <p class="text-muted small mb-0">You have no active support tickets.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
             
         </div>
 
@@ -212,18 +300,18 @@
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center p-3">
                     <h5 class="mb-0">🔔 Notifications</h5>
-                    <span class="badge bg-danger rounded-pill">{{ notifications|length }}</span>
+                    <span class="badge bg-danger rounded-pill">{{ unread_count if unread_count is defined else notifications|length }}</span>
                 </div>
                 <div class="card-body p-0">
                     <div class="list-group list-group-flush">
                         {% for notif in notifications %}
-                        <div class="list-group-item list-group-item-action p-3 {% if not notif.is_read %}bg-light border-start border-3 border-primary{% endif %}">
+                        <a href="{{ url_for('read_notification', notif_id=notif.id) }}" class="list-group-item list-group-item-action p-3 {% if not notif.is_read %}bg-light border-start border-3 border-primary{% endif %}">
                             <div class="d-flex w-100 justify-content-between">
                                 <h6 class="mb-1 fw-bold">{{ notif.title }}</h6>
                                 <small class="text-muted">New</small>
                             </div>
                             <p class="mb-1 small text-secondary">{{ notif.message }}</p>
-                        </div>
+                        </a>
                         {% else %}
                         <div class="p-4 text-center text-muted">
                             <p class="mb-0">You're all caught up!</p>
@@ -232,7 +320,7 @@
                     </div>
                 </div>
                 <div class="card-footer bg-white text-center">
-                    <a href="#" class="text-decoration-none small fw-bold">View All Activity History</a>
+                    <a href="{{ url_for('all_notifications') }}" class="text-decoration-none small fw-bold">View All Activity History</a>
                 </div>
             </div>
         </div>

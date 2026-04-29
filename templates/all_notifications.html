@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 700px;">
+    <h4 class="fw-bold mb-4">All Notifications</h4>
+    <div class="list-group">
+        {% for notif in notifications %}
+        <a href="{{ url_for('read_notification', notif_id=notif.id) }}" class="list-group-item list-group-item-action p-3 {% if not notif.is_read %}bg-light border-start border-3 border-primary{% endif %}">
+            <div class="d-flex justify-content-between">
+                <h6 class="mb-1 fw-bold">{{ notif.title }}</h6>
+                {% if not notif.is_read %}
+                    <span class="badge bg-primary">New</span>
+                {% else %}
+                    <small class="text-muted">Read</small>
+                {% endif %}
+            </div>
+            <p class="mb-0 small text-secondary">{{ notif.message }}</p>
+        </a>
+        {% else %}
+        <p class="text-muted">No notifications yet.</p>
+        {% endfor %}
+    </div>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary mt-4">Back to Dashboard</a>
+</div>
+{% endblock %}
