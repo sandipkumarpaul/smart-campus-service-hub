@@ -1,0 +1,160 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card p-4 shadow-sm mb-4 border-0 border-top border-4" style="border-color: #6f42c1 !important;">
+            <h4 class="mb-3 fw-bold" style="color: #6f42c1;">Post a Skill Swap</h4>
+            <p class="small text-muted mb-1">Trade your knowledge with other students.</p>
+            <p class="small text-danger fw-bold mb-4">No money involved, just pure skill exchange!</p>
+            <form action="{{ url_for('skill_exchange') }}" method="POST">
+                <div class="mb-3">
+                    <label class="fw-bold small text-success">🟢 I can teach / offer:</label>
+                    <input type="text" name="offering_skill" class="form-control border-success" placeholder="e.g. Python Programming" required>
+                </div>
+                <div class="mb-3 bg-light p-2 rounded">
+                    <label class="fw-bold small text-dark">Why I can teach this:</label>
+                    <input type="text" name="credibility" class="form-control form-control-sm" placeholder="e.g. Completed 3 courses, built 2 apps" required>
+                </div>
+                <div class="mb-3">
+                    <label class="fw-bold small" style="color: #6f42c1;">🟣 I want to learn / seek:</label>
+                    <input type="text" name="seeking_skill" class="form-control" style="border-color: #6f42c1;" placeholder="e.g. Adobe Illustrator" required>
+                </div>
+                <div class="mb-3">
+                    <label class="fw-bold small">Details & Goals</label>
+                    <textarea name="description" class="form-control" rows="2" placeholder="I have 2 years of Python experience and need someone to help me design an app logo..." required></textarea>
+                </div>
+                <div class="mb-4">
+                    <label class="fw-bold small">My Availability</label>
+                    <input type="text" name="availability" class="form-control" placeholder="e.g. Tuesday evenings on campus" required>
+                </div>
+                <button type="submit" class="btn text-white w-100 fw-bold" style="background-color: #6f42c1;">Publish Skill Swap</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="mb-0">Skill Exchange Board</h2>
+            <button class="btn btn-outline-secondary btn-sm">⚙️ Filter by Dept</button>
+        </div>
+
+        {% for skill in skills %}
+        <div class="card mb-4 shadow-sm border-0" id="card-{{ skill.id }}">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-circle bg-light d-flex align-items-center justify-content-center border" style="width: 50px; height: 50px; font-size: 1.5rem;">🤝</div>
+                        <div>
+                            <h5 class="mb-0 fw-bold">{{ skill.user.full_name }}</h5>
+                            <small class="text-muted d-block">{{ skill.user.department or skill.user.major or 'Department not set' }}</small>
+                            <small>
+                                {% if skill.user.review_count > 0 %}
+                                    <span class="fw-bold text-warning">⭐ {{ skill.user.average_rating }}</span>/5
+                                {% else %}
+                                    <span class="badge bg-light text-secondary border mt-1">New User</span>
+                                {% endif %}
+                            </small>
+                        </div>
+                    </div>
+                    <span class="badge bg-light text-dark border">🕒 {{ skill.availability }}</span>
+                </div>
+
+                <div class="row mb-3 bg-light rounded-3 p-3 mx-0">
+                    <div class="col-6 border-end border-2">
+                        <small class="text-success fw-bold text-uppercase d-block mb-1">Offering</small>
+                        <span class="fs-5 fw-bold">{{ skill.offering_skill }}</span>
+                        <div class="mt-2 text-muted small"><span class="fw-bold">Credibility:</span> {{ skill.credibility }}</div>
+                    </div>
+                    <div class="col-6 ps-3">
+                        <small class="fw-bold text-uppercase d-block mb-1" style="color: #6f42c1;">Seeking</small>
+                        <span class="fs-5 fw-bold">{{ skill.seeking_skill }}</span>
+                    </div>
+                </div>
+
+                <p class="text-secondary mb-4">{{ skill.description }}</p>
+                <hr>
+
+                {% set proposal = namespace(status=None) %}
+                {% for prop in skill.proposals %}
+                    {% if prop.proposer_id == session.get('user_id') %}
+                        {% set proposal.status = prop.status %}
+                    {% endif %}
+                {% endfor %}
+
+                <div class="d-flex gap-2 align-items-center mt-4">
+                    {% if skill.user_id == session.get('user_id') %}
+                        <button class="btn btn-secondary px-4 fw-bold" disabled>📌 Your Post</button>
+                        <form action="{{ url_for('delete_post', post_type='skill', post_id=skill.id) }}" method="POST" onsubmit="return confirm('Delete this skill swap post?');">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">🗑️ Delete</button>
+                        </form>
+                    {% elif proposal.status == 'Pending' %}
+                        <button class="btn btn-warning text-dark px-4 fw-bold" disabled>⏳ Proposed</button>
+                    {% elif proposal.status == 'Declined' %}
+                        <button class="btn btn-danger px-4 fw-bold" disabled>❌ Declined</button>
+                    {% else %}
+                        <form action="{{ url_for('propose_trade', skill_id=skill.id) }}" method="POST">
+                            <button type="submit" class="btn text-white px-4 fw-bold" style="background-color: #6f42c1; border: none;">🤝 Propose Exchange</button>
+                        </form>
+                    {% endif %}
+
+                    <div class="ms-auto d-flex gap-2">
+                        {% if skill.id in reported_ids %}
+                            <button class="btn btn-outline-danger px-3" disabled title="Reported">🚩 Reported</button>
+                        {% else %}
+                            <button type="button" class="btn btn-outline-danger px-3" data-bs-toggle="modal" data-bs-target="#reportModal" data-reported-id="{{ skill.id }}" data-reported-type="Skill Exchange">🚩 Report</button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="card card-surface border-0 text-center py-5">
+            <div class="mb-3" style="font-size: 3rem;">🤝</div>
+            <h4 class="fw-bold">No Skill Swaps Yet</h4>
+            <p class="text-muted">Be the first to post a skill exchange and start learning!</p>
+            <button class="btn btn-primary mt-2" style="background-color: #6f42c1; border-color: #6f42c1;" onclick="document.querySelector('form').scrollIntoView();">Post the First Swap</button>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="modal fade" id="reportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold text-danger">🚩 Report Post</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('submit_report') }}" method="POST">
+                <div class="modal-body">
+                    <p class="text-muted small">Please explain why you are reporting this post. False reports will result in a trust score penalty.</p>
+                    <input type="hidden" name="reported_id" id="modalReportedId">
+                    <input type="hidden" name="reported_type" id="modalReportedType">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Reason for Reporting</label>
+                        <textarea name="reason" class="form-control" rows="3" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer d-flex justify-content-between">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger fw-bold">Submit Report</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var reportModal = document.getElementById('reportModal');
+    if (reportModal) {
+        reportModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            reportModal.querySelector('#modalReportedId').value = button.getAttribute('data-reported-id');
+            reportModal.querySelector('#modalReportedType').value = button.getAttribute('data-reported-type');
+        });
+    }
+});
+</script>
+{% endblock %}

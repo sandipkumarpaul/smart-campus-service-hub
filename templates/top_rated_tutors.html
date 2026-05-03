@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Top Rated Tutors - Smart Campus Service Hub{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4">
+    <div>
+        <h1 class="fw-bold text-primary mb-2">Top Rated Tutors</h1>
+        <p class="text-muted mb-0">Ranked from updated peer tutoring profiles using verified tutor reviews.</p>
+    </div>
+    <a href="{{ url_for('tutors') }}" class="btn btn-outline-primary">Back to Peer Tutoring</a>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <form action="{{ url_for('top_rated_tutors') }}" method="GET" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label fw-bold small">Department</label>
+                <input type="text" name="department" class="form-control" placeholder="CSE, BBA, EEE" value="{{ selected_department or '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-bold small">Subject</label>
+                <input type="text" name="subject" class="form-control" placeholder="CSE110, MAT120" value="{{ selected_subject or '' }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-bold small">Minimum Rating</label>
+                <select name="min_rating" class="form-select">
+                    <option value="">Any</option>
+                    <option value="5" {% if selected_min_rating == '5' %}selected{% endif %}>5</option>
+                    <option value="4" {% if selected_min_rating == '4' %}selected{% endif %}>4+</option>
+                    <option value="3" {% if selected_min_rating == '3' %}selected{% endif %}>3+</option>
+                    <option value="2" {% if selected_min_rating == '2' %}selected{% endif %}>2+</option>
+                    <option value="1" {% if selected_min_rating == '1' %}selected{% endif %}>1+</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button type="submit" class="btn btn-primary">Search</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row g-4">
+    {% for tutor in tutors %}
+    <div class="col-lg-6">
+        <div class="card h-100 border-0 shadow-sm" id="card-{{ tutor.id }}">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between gap-3 mb-3">
+                    <div>
+                        <h4 class="fw-bold text-primary mb-1">{{ tutor.user.full_name }}</h4>
+                        <p class="mb-1 text-muted">{{ tutor.user.department or tutor.user.major or 'Department not set' }}</p>
+                        <span class="badge bg-light text-dark border">{{ tutor.subject_title }}</span>
+                    </div>
+                    <div class="text-end">
+                        <div class="display-6 fw-bold text-warning">{{ "%.1f"|format(tutor.user.average_rating) }}</div>
+                        <small class="text-muted">{{ tutor.user.review_count }} reviews</small>
+                    </div>
+                </div>
+
+                <p class="text-secondary fst-italic border-start border-3 ps-3">"{{ tutor.teaching_style or 'No teaching style added yet.' }}"</p>
+
+                <div class="row text-muted small mb-3">
+                    <div class="col-sm-6"><strong>Availability:</strong><br>{{ tutor.availability_text }}</div>
+                    <div class="col-sm-6"><strong>Mode:</strong><br>{{ tutor.mode }}{% if tutor.location_text %} ({{ tutor.location_text }}){% endif %}</div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    {% if tutor.user.top_tag %}
+                    <span class="badge bg-primary">Best for {{ tutor.user.top_tag }}</span>
+                    {% endif %}
+                    <span class="badge bg-light text-success border">{{ tutor.user.trust_badge }}</span>
+                    {% if tutor.rate_type == 'Free' %}
+                    <span class="badge bg-success">Free</span>
+                    {% elif tutor.rate_type == 'Barter' %}
+                    <span class="badge" style="background-color:#6f42c1;">Skill Swap</span>
+                    {% else %}
+                    <span class="badge bg-dark">BDT {{ tutor.hourly_rate }}/hr</span>
+                    {% endif %}
+                </div>
+
+                <hr>
+
+                {% set booking_status = namespace(state='none') %}
+                {% for booking in tutor.bookings %}
+                    {% if booking.student_id == session.get('user_id') %}
+                        {% set booking_status.state = booking.status %}
+                    {% endif %}
+                {% endfor %}
+
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{{ url_for('tutors') }}#card-{{ tutor.id }}" class="btn btn-outline-primary btn-sm">View Listing</a>
+                    {% if tutor.user.id != session.get('user_id') and booking_status.state == 'none' %}
+                    <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#bookTopTutor{{ tutor.id }}">Request Tutoring</button>
+                    {% elif booking_status.state == 'Accepted' %}
+                    <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#reviewTopModal{{ tutor.user.id }}">Review Tutor</button>
+                    {% elif booking_status.state != 'none' %}
+                    <span class="badge bg-light text-secondary border align-self-center">{{ booking_status.state }}</span>
+                    {% endif %}
+                </div>
+
+                {% if tutor.user.id != session.get('user_id') and booking_status.state == 'none' %}
+                <div class="collapse mt-3" id="bookTopTutor{{ tutor.id }}">
+                    <form action="{{ url_for('book_tutor', listing_id=tutor.id) }}" method="POST" class="row g-2 bg-light p-3 rounded-3">
+                        <div class="col-md-4">
+                            <input type="date" name="session_date" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="time" name="start_time" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" name="note" class="form-control form-control-sm" placeholder="Goal" required>
+                        </div>
+                        <div class="col-12 d-grid">
+                            <button type="submit" class="btn btn-success btn-sm">Send Request</button>
+                        </div>
+                    </form>
+                </div>
+                {% endif %}
+
+                {% if tutor.user.id != session.get('user_id') %}
+                <div class="modal fade" id="reviewTopModal{{ tutor.user.id }}" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content border-0 border-top border-4 border-warning shadow">
+                            <div class="modal-header bg-light">
+                                <h5 class="modal-title fw-bold">Rate {{ tutor.user.full_name }}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <form action="{{ url_for('submit_review', reviewee_id=tutor.user.id) }}" method="POST">
+                                <div class="modal-body">
+                                    <input type="hidden" name="service_type" value="Tutoring">
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-md-4">
+                                            <label class="small fw-bold">Knowledge</label>
+                                            <select name="knowledge" class="form-select form-select-sm" required>
+                                                <option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="small fw-bold">Communication</label>
+                                            <select name="communication" class="form-select form-select-sm" required>
+                                                <option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="small fw-bold">Punctuality</label>
+                                            <select name="punctuality" class="form-select form-select-sm" required>
+                                                <option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small">Highlight Tag</label>
+                                        <select name="best_for" class="form-select form-select-sm">
+                                            <option value="">Select a tag...</option>
+                                            <option value="Exam Prep">Exam Prep</option>
+                                            <option value="Beginners">Beginners</option>
+                                            <option value="Deep Concepts">Deep Concepts</option>
+                                            <option value="Homework Help">Homework Help</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold small">Feedback</label>
+                                        <textarea name="feedback" class="form-control" rows="2" maxlength="150" required></textarea>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="is_anonymous" id="anonTopCheck{{ tutor.user.id }}">
+                                        <label class="form-check-label small text-muted" for="anonTopCheck{{ tutor.user.id }}">Post anonymously</label>
+                                    </div>
+                                </div>
+                                <div class="modal-footer bg-light border-0">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="submit" class="btn btn-warning btn-sm fw-bold text-dark">Submit Review</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-5 text-center">
+                <h4 class="fw-bold text-primary">No tutors match this search yet.</h4>
+                <p class="text-muted mb-3">Try a broader department, subject, or rating filter.</p>
+                <a href="{{ url_for('top_rated_tutors') }}" class="btn btn-outline-primary">Reset Search</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

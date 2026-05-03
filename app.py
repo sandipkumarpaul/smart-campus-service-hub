@@ -62,7 +62,7 @@ def build_database_uri():
     db_password = _clean_env_value(os.environ.get("DB_PASS")) or ""
     db_host = _clean_env_value(os.environ.get("DB_HOST")) or "localhost"
     db_port = _clean_env_value(os.environ.get("DB_PORT")) or "3306"
-    db_name = _clean_env_value(os.environ.get("DB_NAME")) or "smart_campus_service_hub"
+    db_name = _clean_env_value(os.environ.get("DB_NAME")) or "smart_campus_service_hub_s"
     return f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?charset=utf8mb4"
 
 
@@ -163,12 +163,19 @@ def build_note_cards(notes, viewer_id=None):
 def inject_globals():
     current_user = None
     user_id = session.get("user_id")
+    global_unread_count = 0
     if user_id:
         current_user = db.session.get(User, user_id)
+        global_unread_count = Message.query.join(Conversation).filter(
+            Message.sender_id != user_id,
+            Message.is_seen == 0,
+            (Conversation.participant1_id == user_id) | (Conversation.participant2_id == user_id),
+        ).count()
 
     return {
         "available_views": set(app.view_functions.keys()),
         "current_user": current_user,
+        "global_unread_count": global_unread_count,
         "google_maps_api_key": GOOGLE_MAPS_API_KEY,
         "openrouteservice_available": bool(openrouteservice_api_key()),
         "tutors_exists": "tutors" in app.view_functions,
@@ -194,6 +201,19 @@ def get_calendar_service():
 
     raise FileNotFoundError("No valid token found. Please authenticate at /auth first.")
 
+
+def trigger_notification(target_user_id, notif_type, title, message):
+    new_notif = Notification(user_id=target_user_id, type=notif_type, title=title, message=message, is_read=False)
+    db.session.add(new_notif)
+
+
+def check_restrictions():
+    if "user_id" in session:
+        user = db.session.get(User, session["user_id"])
+        if user and (user.is_banned or user.reputation_score < 0):
+            return True
+    return False
+
 # ==========================================
 # CENTRALIZED MYSQL MODELS
 # ==========================================
@@ -205,10 +225,49 @@ class User(db.Model):
     full_name = db.Column(db.String(120), nullable=False)
     username = db.Column(db.String(50), unique=True)
     email = db.Column(db.String(120), nullable=False, unique=True)
+    student_id = db.Column(db.String(50), nullable=True)
     password_hash = db.Column(db.String(255), nullable=False)
     department = db.Column(db.String(100))
     major = db.Column(db.String(100))
+    is_admin = db.Column(db.Boolean, default=False)
+    is_banned = db.Column(db.Boolean, default=False)
+    trust_penalty = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def review_count(self):
+        return len(self.received_reviews)
+
+    @property
+    def average_rating(self):
+        if self.review_count == 0:
+            return 0
+        total_score = sum((review.knowledge + review.communication + review.punctuality) / 3 for review in self.received_reviews)
+        return round(total_score / self.review_count, 1)
+
+    @property
+    def top_tag(self):
+        tags = [review.best_for for review in self.received_reviews if review.best_for]
+        return max(set(tags), key=tags.count) if tags else None
+
+    @property
+    def reputation_score(self):
+        score = 0
+        if self.review_count:
+            score += self.average_rating * 10
+            score += self.review_count * 5
+        score += len(self.skill_posts) * 10
+        score += len(self.tutoring_posts) * 10
+        return int(score) - (self.trust_penalty or 0)
+
+    @property
+    def trust_badge(self):
+        score = self.reputation_score
+        if score < 0: return "⚠️ Restricted User"
+        if score >= 100: return "🌟 Campus Ambassador"
+        if score >= 50: return "🛡️ Trusted Peer"
+        if score >= 20: return "🤝 Active Contributor"
+        return "🌱 New Member"
 
 # Queenw's Feature 1: Study Partner Finder
 class StudyPartnerPost(db.Model):
@@ -257,6 +316,7 @@ class TutoringListing(db.Model):
     rate_type = db.Column(db.String(50), default='Paid') 
     hourly_rate = db.Column(db.Numeric(10, 2), default=0.00)
     free_consult = db.Column(db.String(10), default='No')
+    status = db.Column(db.String(50), default='Active')
     
     user = db.relationship('User', backref='tutoring_posts')
     bookings = db.relationship('TutoringBooking', backref='listing', lazy=True)
@@ -269,7 +329,9 @@ class TutoringBooking(db.Model):
     session_date = db.Column(db.String(50))
     start_time = db.Column(db.String(50))
     note = db.Column(db.Text)
-    status = db.Column(db.String(50), default='pending')
+    status = db.Column(db.String(50), default='Pending')
+
+    student = db.relationship('User', foreign_keys=[student_id])
 
 # Sandip's Feature 2: Campus Events
 class CampusEvent(db.Model):
@@ -302,10 +364,16 @@ class Conversation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(150))
     conversation_type = db.Column(db.String(50), default='private')
+    participant1_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    participant2_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     context_type = db.Column(db.String(50)) 
     context_id = db.Column(db.Integer)      
-    
-    messages = db.relationship('Message', backref='conversation', lazy=True)
+    p1 = db.relationship('User', foreign_keys=[participant1_id])
+    p2 = db.relationship('User', foreign_keys=[participant2_id])
+    messages = db.relationship('Message', backref='conversation', lazy=True, cascade="all, delete-orphan")
+
+    def get_other_user(self, current_user_id):
+        return self.p2 if self.participant1_id == current_user_id else self.p1
 
 class Message(db.Model):
     __tablename__ = 'messages'
@@ -327,6 +395,40 @@ class Notification(db.Model):
     related_id = db.Column(db.Integer)
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Report(db.Model):
+    __tablename__ = 'reports'
+    id = db.Column(db.Integer, primary_key=True)
+    reporter_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    reported_type = db.Column(db.String(50), nullable=False)
+    reported_id = db.Column(db.Integer, nullable=False)
+    reason = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(50), default='Pending')
+    reporter = db.relationship('User', backref='submitted_reports')
+
+
+class SkillExchange(db.Model):
+    __tablename__ = 'skill_exchanges'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    offering_skill = db.Column(db.String(150), nullable=False)
+    seeking_skill = db.Column(db.String(150), nullable=False)
+    credibility = db.Column(db.String(255))
+    description = db.Column(db.Text, nullable=False)
+    availability = db.Column(db.String(100))
+    status = db.Column(db.String(50), default='Active')
+    user = db.relationship('User', backref='skill_posts')
+
+
+class SkillProposal(db.Model):
+    __tablename__ = 'skill_proposals'
+    id = db.Column(db.Integer, primary_key=True)
+    skill_id = db.Column(db.Integer, db.ForeignKey('skill_exchanges.id'), nullable=False)
+    proposer_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    status = db.Column(db.String(50), default='Pending')
+    skill = db.relationship('SkillExchange', backref='proposals')
+    proposer = db.relationship('User', foreign_keys=[proposer_id])
 
 
 # Dipto's Features
@@ -453,6 +555,24 @@ class DirectMessage(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class Review(db.Model):
+    __tablename__ = "reviews"
+    id = db.Column(db.Integer, primary_key=True)
+    reviewer_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    reviewee_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    service_type = db.Column(db.String(50))
+    knowledge = db.Column(db.Integer, nullable=False, default=5)
+    communication = db.Column(db.Integer, nullable=False, default=5)
+    punctuality = db.Column(db.Integer, nullable=False, default=5)
+    best_for = db.Column(db.String(100))
+    feedback = db.Column(db.Text)
+    is_anonymous = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    reviewer = db.relationship("User", foreign_keys=[reviewer_id], backref="given_reviews")
+    reviewee = db.relationship("User", foreign_keys=[reviewee_id], backref="received_reviews")
+
+
 class Tutor(db.Model):
     __tablename__ = "tutors"
     id = db.Column(db.Integer, primary_key=True)
@@ -512,7 +632,11 @@ def _sync_merged_schema():
         "users": {
             "department": "ALTER TABLE users ADD COLUMN department VARCHAR(100) NULL",
             "major": "ALTER TABLE users ADD COLUMN major VARCHAR(100) NULL",
+            "is_admin": "ALTER TABLE users ADD COLUMN is_admin BOOLEAN NULL DEFAULT 0",
+            "is_banned": "ALTER TABLE users ADD COLUMN is_banned BOOLEAN NULL DEFAULT 0",
+            "trust_penalty": "ALTER TABLE users ADD COLUMN trust_penalty INTEGER NULL DEFAULT 0",
             "created_at": "ALTER TABLE users ADD COLUMN created_at DATETIME NULL",
+            "student_id": "ALTER TABLE users ADD COLUMN student_id VARCHAR(50) NULL UNIQUE",
         },
         "study_partner_posts": {
             "goals": "ALTER TABLE study_partner_posts ADD COLUMN goals TEXT NULL",
@@ -538,6 +662,7 @@ def _sync_merged_schema():
             "rate_type": "ALTER TABLE tutoring_listings ADD COLUMN rate_type VARCHAR(50) NOT NULL DEFAULT 'Paid'",
             "hourly_rate": "ALTER TABLE tutoring_listings ADD COLUMN hourly_rate DECIMAL(10, 2) NOT NULL DEFAULT 0.00",
             "free_consult": "ALTER TABLE tutoring_listings ADD COLUMN free_consult VARCHAR(10) NOT NULL DEFAULT 'No'",
+            "status": "ALTER TABLE tutoring_listings ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Active'",
         },
         "tutoring_bookings": {
             "session_date": "ALTER TABLE tutoring_bookings ADD COLUMN session_date VARCHAR(50) NULL",
@@ -563,6 +688,8 @@ def _sync_merged_schema():
         },
         "conversations": {
             "conversation_type": "ALTER TABLE conversations ADD COLUMN conversation_type VARCHAR(50) NOT NULL DEFAULT 'private'",
+            "participant1_id": "ALTER TABLE conversations ADD COLUMN participant1_id INTEGER NULL",
+            "participant2_id": "ALTER TABLE conversations ADD COLUMN participant2_id INTEGER NULL",
             "context_type": "ALTER TABLE conversations ADD COLUMN context_type VARCHAR(50) NULL",
             "context_id": "ALTER TABLE conversations ADD COLUMN context_id INTEGER NULL",
         },
@@ -693,6 +820,7 @@ def register():
             session["user_id"] = new_user.id
             session["full_name"] = new_user.full_name
             session["user_major"] = new_user.major or new_user.department
+            session["is_admin"] = new_user.is_admin
             flash("Registration successful. You are now logged in.", "success")
             return redirect(url_for("dashboard"))
         except IntegrityError:
@@ -719,6 +847,7 @@ def login():
             session['user_id'] = user.id
             session['full_name'] = user.full_name
             session["user_major"] = user.major or user.department
+            session["is_admin"] = user.is_admin
             return redirect(url_for('dashboard'))
         else:
             flash("Invalid email or password. Please try again.", "danger")
@@ -1187,6 +1316,10 @@ def tutors():
         return redirect(url_for('login'))
         
     if request.method == 'POST':
+        if check_restrictions():
+            flash("Your account is restricted from posting.", "danger")
+            return redirect(url_for('dashboard'))
+
         listing_latitude = None
         listing_longitude = None
         listing_location = request.form.get('location')
@@ -1194,6 +1327,10 @@ def tutors():
             listing_latitude, listing_longitude = _best_effort_geocode(listing_location)
 
         is_free = 'Yes' if request.form.get('free_consult') else 'No' 
+        try:
+            safe_rate = float(request.form.get('rate', 0.00))
+        except ValueError:
+            safe_rate = 0.00
         
         new_listing = TutoringListing(
             tutor_id=session['user_id'], # Using dynamic session ID
@@ -1205,35 +1342,64 @@ def tutors():
             latitude=listing_latitude,
             longitude=listing_longitude,
             rate_type=request.form['rate_type'],
-            hourly_rate=request.form['rate'],
+            hourly_rate=safe_rate,
             free_consult=is_free
         )
         db.session.add(new_listing)
         db.session.commit()
         return redirect(url_for('tutors'))
     
-    all_tutors = TutoringListing.query.order_by(TutoringListing.id.desc()).all()
-    major_query = (request.args.get("major") or session.get("user_major") or "").strip()
+    all_tutors = (
+        TutoringListing.query
+        .join(User)
+        .filter(User.is_banned == False, TutoringListing.status == "Active")
+        .order_by(TutoringListing.id.desc())
+        .all()
+    )
+    my_reports = Report.query.filter_by(reporter_id=session['user_id'], reported_type='Tutor').all()
+    reported_ids = [report.reported_id for report in my_reports]
+    return render_template("tutors.html", tutors=all_tutors, reported_ids=reported_ids)
+
+
+@app.route("/top-rated-tutors")
+def top_rated_tutors():
+    login_redirect = require_login_redirect()
+    if login_redirect:
+        return login_redirect
+
+    department_query = (request.args.get("department") or session.get("user_major") or "").strip()
     subject_query = (request.args.get("subject") or "").strip()
     min_rating_query = (request.args.get("min_rating") or "").strip()
-    top_query = Tutor.query
-    if major_query:
-        top_query = top_query.filter(func.lower(Tutor.major) == major_query.lower())
+
+    query = (
+        TutoringListing.query
+        .join(User)
+        .filter(User.is_banned == False, TutoringListing.status == "Active")
+    )
+    if department_query:
+        query = query.filter(
+            (func.lower(User.department) == department_query.lower()) |
+            (func.lower(User.major) == department_query.lower())
+        )
     if subject_query:
-        top_query = top_query.filter(func.lower(Tutor.subject) == subject_query.lower())
+        query = query.filter(TutoringListing.subject_title.ilike(f"%{subject_query}%"))
+
     min_rating_value = None
     if min_rating_query:
         try:
             min_rating_value = float(min_rating_query)
-            top_query = top_query.filter(Tutor.rating >= min_rating_value)
         except ValueError:
             min_rating_value = None
-    top_tutors = top_query.order_by(Tutor.rating.desc(), Tutor.review_count.desc()).all()
+
+    listings = query.all()
+    if min_rating_value is not None:
+        listings = [listing for listing in listings if listing.user.average_rating >= min_rating_value]
+    listings.sort(key=lambda listing: (listing.user.average_rating, listing.user.review_count, listing.id), reverse=True)
+
     return render_template(
-        "tutors.html",
-        tutors=all_tutors,
-        top_tutors=top_tutors,
-        selected_major=major_query,
+        "top_rated_tutors.html",
+        tutors=listings,
+        selected_department=department_query,
         selected_subject=subject_query,
         selected_min_rating=min_rating_query if min_rating_value is not None else "",
     )
@@ -1242,17 +1408,406 @@ def tutors():
 def book_tutor(listing_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
-        
+    if check_restrictions():
+        flash("Your account is restricted from making requests.", "danger")
+        return redirect(url_for('tutors'))
+
+    listing = db.session.get(TutoringListing, listing_id)
+    if not listing:
+        flash("This tutoring listing no longer exists.", "warning")
+        return redirect(url_for("tutors"))
+    if listing.tutor_id == session["user_id"]:
+        flash("You cannot book your own tutoring service.", "danger")
+        return redirect(url_for("tutors"))
+
+    existing = TutoringBooking.query.filter_by(
+        tutoring_listing_id=listing.id,
+        student_id=session["user_id"],
+    ).filter(TutoringBooking.status.in_(["Pending", "Accepted"])).first()
+    if existing:
+        flash("You already have an active request for this tutor.", "info")
+        return redirect(url_for("tutors"))
+
     new_booking = TutoringBooking(
         tutoring_listing_id=listing_id,
         student_id=session['user_id'], # Using dynamic session ID
-        session_date=request.form['session_date'],
-        start_time=request.form['start_time'],
-        note=request.form['note']
+        session_date=request.form.get('session_date'),
+        start_time=request.form.get('start_time'),
+        note=request.form.get('note')
     )
     db.session.add(new_booking)
+    trigger_notification(
+        target_user_id=listing.tutor_id,
+        notif_type="booking",
+        title="New Tutoring Request",
+        message=f"{session.get('full_name', 'A student')} requested a session for {listing.subject_title}! Check your Dashboard.",
+    )
     db.session.commit()
+    flash("Request sent to the tutor! They will respond via your Dashboard.", "success")
     return redirect(url_for('tutors'))
+
+
+@app.route("/handle_tutor_request/<int:booking_id>/<string:action>", methods=["POST"])
+def handle_tutor_request(booking_id, action):
+    login_redirect = require_login_redirect()
+    if login_redirect:
+        return login_redirect
+
+    booking = TutoringBooking.query.get_or_404(booking_id)
+    if not booking.listing or booking.listing.tutor_id != session["user_id"]:
+        flash("You are not authorized to manage this tutor request.", "danger")
+        return redirect(url_for("dashboard"))
+
+    if action == "accept":
+        booking.status = "Accepted"
+        existing_conv = Conversation.query.filter(
+            ((Conversation.participant1_id == booking.student_id) & (Conversation.participant2_id == booking.listing.tutor_id)) |
+            ((Conversation.participant1_id == booking.listing.tutor_id) & (Conversation.participant2_id == booking.student_id)),
+            Conversation.context_type == "Tutor",
+            Conversation.context_id == booking.listing.id,
+        ).first()
+
+        if not existing_conv:
+            existing_conv = Conversation(
+                participant1_id=booking.student_id,
+                participant2_id=booking.listing.tutor_id,
+                context_type="Tutor",
+                context_id=booking.listing.id,
+            )
+            db.session.add(existing_conv)
+            db.session.commit()
+
+        trigger_notification(
+            target_user_id=booking.student_id,
+            notif_type="message",
+            title="Tutor Request Accepted!",
+            message=f"{session.get('full_name', 'Your tutor')} accepted your request. Chat now!",
+        )
+        flash("Request accepted! A chat has been created.", "success")
+    elif action == "decline":
+        booking.status = "Declined"
+        trigger_notification(
+            target_user_id=booking.student_id,
+            notif_type="system",
+            title="Request Declined",
+            message=f"Your tutoring request for {booking.listing.subject_title} was declined.",
+        )
+        flash("Request declined.", "info")
+    db.session.commit()
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/submit_review/<int:reviewee_id>", methods=["POST"])
+def submit_review(reviewee_id):
+    login_redirect = require_login_redirect()
+    if login_redirect:
+        return login_redirect
+    if check_restrictions():
+        flash("Your account is restricted from reviewing.", "danger")
+        return redirect(url_for("dashboard"))
+
+    if reviewee_id == session["user_id"]:
+        flash("You cannot review yourself.", "danger")
+        return redirect(url_for("top_rated_tutors"))
+
+    has_accepted_tutoring = (
+        TutoringBooking.query
+        .join(TutoringListing)
+        .filter(
+            TutoringBooking.student_id == session["user_id"],
+            TutoringListing.tutor_id == reviewee_id,
+            TutoringBooking.status == "Accepted",
+        )
+        .first()
+    )
+    has_skill = SkillProposal.query.join(SkillExchange).filter(
+        ((SkillProposal.proposer_id == session["user_id"]) & (SkillExchange.user_id == reviewee_id)) |
+        ((SkillProposal.proposer_id == reviewee_id) & (SkillExchange.user_id == session["user_id"])),
+        SkillProposal.status == "Accepted",
+    ).first()
+
+    if not (has_accepted_tutoring or has_skill):
+        flash("You can only review users you have successfully completed a service with.", "danger")
+        return redirect(request.referrer or url_for("dashboard"))
+
+    service_type = request.form.get("service_type") or "Tutoring"
+    existing = Review.query.filter_by(
+        reviewer_id=session["user_id"],
+        reviewee_id=reviewee_id,
+        service_type=service_type,
+    ).first()
+    if existing:
+        flash("You have already submitted a review for this service.", "danger")
+        return redirect(request.referrer or url_for("dashboard"))
+
+    try:
+        knowledge = max(1, min(5, int(request.form.get("knowledge", 5))))
+        communication = max(1, min(5, int(request.form.get("communication", 5))))
+        punctuality = max(1, min(5, int(request.form.get("punctuality", 5))))
+    except ValueError:
+        knowledge, communication, punctuality = 5, 5, 5
+
+    review = Review(
+        reviewer_id=session["user_id"],
+        reviewee_id=reviewee_id,
+        service_type=service_type,
+        knowledge=knowledge,
+        communication=communication,
+        punctuality=punctuality,
+        best_for=request.form.get("best_for", ""),
+        feedback=request.form.get("feedback", ""),
+        is_anonymous=bool(request.form.get("is_anonymous")),
+    )
+    db.session.add(review)
+    trigger_notification(
+        target_user_id=reviewee_id,
+        notif_type="review",
+        title="Detailed Review Received!",
+        message="Someone just left you a verified review!",
+    )
+    db.session.commit()
+    flash("Detailed review submitted! Thank you for building campus trust.", "success")
+    return redirect(request.referrer or url_for("dashboard"))
+
+
+@app.route("/read_notification/<int:notif_id>")
+def read_notification(notif_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    notif = db.session.get(Notification, notif_id)
+    target_url = url_for("dashboard")
+
+    if notif and notif.user_id == session["user_id"]:
+        notif.is_read = True
+        db.session.commit()
+        if notif.type == "message":
+            target_url = url_for("messages")
+        elif notif.type == "report":
+            target_url = url_for("admin_reports") if session.get("is_admin") else url_for("dashboard")
+        elif notif.type == "event":
+            target_url = url_for("events")
+        elif notif.type in ["booking", "review", "system"]:
+            target_url = url_for("dashboard")
+
+    return redirect(target_url)
+
+
+@app.route("/all_notifications")
+def all_notifications():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    notifications = Notification.query.filter_by(user_id=session["user_id"]).order_by(Notification.id.desc()).all()
+    return render_template("all_notifications.html", notifications=notifications)
+
+
+@app.route('/report', methods=['POST'])
+def submit_report():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    if check_restrictions():
+        flash("Your account is restricted from submitting reports.", "danger")
+        return redirect(url_for('dashboard'))
+
+    try:
+        reported_id = int(request.form['reported_id'])
+    except (ValueError, KeyError):
+        flash("Invalid report data.", "danger")
+        return redirect(request.referrer or url_for('dashboard'))
+
+    existing = Report.query.filter_by(
+        reporter_id=session['user_id'],
+        reported_type=request.form['reported_type'],
+        reported_id=reported_id,
+    ).first()
+    if existing:
+        flash("You have already reported this item. Our admin team is reviewing it.", "info")
+        return redirect(request.referrer or url_for('dashboard'))
+
+    new_report = Report(
+        reporter_id=session['user_id'],
+        reported_type=request.form['reported_type'],
+        reported_id=reported_id,
+        reason=request.form['reason'],
+    )
+    db.session.add(new_report)
+    db.session.commit()
+
+    trigger_notification(target_user_id=session['user_id'], notif_type='system', title='Report Logged', message=f"Ticket #{new_report.id}: Your report has been securely logged.")
+    for admin in User.query.filter_by(is_admin=True).all():
+        trigger_notification(target_user_id=admin.id, notif_type='system', title='New Moderation Ticket', message=f"A new report (#{new_report.id}) requires your review.")
+    db.session.commit()
+
+    flash("Report submitted successfully. Decision pending.", "success")
+    return redirect(request.referrer or url_for('dashboard'))
+
+
+@app.route('/admin/resolve/<int:report_id>/<string:action>', methods=['POST'])
+def resolve_report(report_id, action):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    if not session.get('is_admin'):
+        return redirect(url_for('dashboard'))
+
+    report = db.session.get(Report, report_id)
+    if report and report.status == 'Pending':
+        offender_id = None
+        if report.reported_type == 'Tutor':
+            item = db.session.get(TutoringListing, report.reported_id)
+            if item:
+                offender_id = item.tutor_id
+                item.status = 'Banned'
+        elif report.reported_type == 'Skill Exchange':
+            item = db.session.get(SkillExchange, report.reported_id)
+            if item:
+                offender_id = item.user_id
+                item.status = 'Banned'
+        elif report.reported_type == 'Study Group':
+            item = db.session.get(StudyPartnerPost, report.reported_id)
+            if item:
+                offender_id = item.user_id
+                item.status = 'Banned'
+        
+        elif report.reported_type == 'Event':
+            item = db.session.get(CampusEvent, report.reported_id)
+            if item:
+                offender_id = item.created_by
+                item.status = 'Banned'
+
+        if action == 'approve':
+            report.status = 'Approved (Banned)'
+            if offender_id:
+                offender = db.session.get(User, offender_id)
+                if offender:
+                    offender.is_banned = True
+                    trigger_notification(target_user_id=offender.id, notif_type='system', title='Account Restricted', message="Your account has been restricted due to community guidelines violations.")
+            trigger_notification(target_user_id=report.reporter_id, notif_type='system', title='Report Resolved', message=f"Action taken on Ticket #{report.id}. The user has been banned.")
+            flash("Report approved and user banned.", "success")
+        elif action == 'reject':
+            report.status = 'Rejected (Penalty)'
+            reporter = db.session.get(User, report.reporter_id)
+            if reporter:
+                reporter.trust_penalty += 20
+                trigger_notification(target_user_id=report.reporter_id, notif_type='system', title='False Report Penalty', message=f"Ticket #{report.id} was rejected. A penalty has been applied to your Trust Score.")
+            flash("Report rejected and reporter penalized.", "warning")
+
+        db.session.commit()
+    return redirect(url_for('admin_reports'))
+
+
+@app.route('/admin/reports')
+def admin_reports():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    if not session.get('is_admin'):
+        return redirect(url_for('dashboard'))
+    reports = Report.query.order_by(Report.id.desc()).all()
+    return render_template('admin_reports.html', reports=reports)
+
+
+@app.route('/skill_exchange', methods=['GET', 'POST'])
+def skill_exchange():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        if check_restrictions():
+            flash("Your account is restricted from posting.", "danger")
+            return redirect(url_for('dashboard'))
+        new_skill = SkillExchange(
+            user_id=session['user_id'],
+            offering_skill=request.form['offering_skill'],
+            seeking_skill=request.form['seeking_skill'],
+            credibility=request.form.get('credibility', ''),
+            description=request.form['description'],
+            availability=request.form.get('availability', ''),
+        )
+        db.session.add(new_skill)
+        db.session.commit()
+        return redirect(url_for('skill_exchange'))
+
+    skills = SkillExchange.query.join(User).filter(User.is_banned == False, SkillExchange.status == 'Active').order_by(SkillExchange.id.desc()).all()
+    my_reports = Report.query.filter_by(reporter_id=session['user_id'], reported_type='Skill Exchange').all()
+    reported_ids = [report.reported_id for report in my_reports]
+    return render_template('skill_exchange.html', skills=skills, reported_ids=reported_ids)
+
+
+@app.route('/propose_trade/<int:skill_id>', methods=['POST'])
+def propose_trade(skill_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    if check_restrictions():
+        flash("Your account is restricted from making proposals.", "danger")
+        return redirect(url_for('skill_exchange'))
+
+    skill = db.session.get(SkillExchange, skill_id)
+    if skill and skill.user_id != session['user_id']:
+        existing = SkillProposal.query.filter_by(skill_id=skill.id, proposer_id=session['user_id']).first()
+        if not existing:
+            db.session.add(SkillProposal(skill_id=skill.id, proposer_id=session['user_id']))
+            trigger_notification(target_user_id=skill.user_id, notif_type='system', title='New Trade Proposal!', message=f"{session.get('full_name', 'A student')} wants to trade skills! Check your Dashboard.")
+            db.session.commit()
+            flash("Proposal sent!", "success")
+    return redirect(url_for('skill_exchange'))
+
+
+@app.route('/handle_proposal/<int:proposal_id>/<string:action>', methods=['POST'])
+def handle_proposal(proposal_id, action):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    proposal = db.session.get(SkillProposal, proposal_id)
+    if not proposal or proposal.skill.user_id != session['user_id']:
+        return redirect(url_for('dashboard'))
+
+    if action == 'accept':
+        proposal.status = 'Accepted'
+        proposal.skill.status = 'Matched'
+        existing_conv = Conversation.query.filter(
+            ((Conversation.participant1_id == proposal.proposer_id) & (Conversation.participant2_id == proposal.skill.user_id)) |
+            ((Conversation.participant1_id == proposal.skill.user_id) & (Conversation.participant2_id == proposal.proposer_id)),
+            Conversation.context_type == 'Skill Exchange',
+            Conversation.context_id == proposal.skill.id,
+        ).first()
+        if not existing_conv:
+            db.session.add(Conversation(participant1_id=proposal.proposer_id, participant2_id=proposal.skill.user_id, context_type='Skill Exchange', context_id=proposal.skill.id))
+            db.session.commit()
+        trigger_notification(target_user_id=proposal.proposer_id, notif_type='message', title='Proposal Accepted!', message=f"{session.get('full_name', 'A student')} accepted your skill trade. Click here to chat!")
+        flash("Proposal accepted! A chat has been created.", "success")
+    elif action == 'decline':
+        proposal.status = 'Declined'
+        trigger_notification(target_user_id=proposal.proposer_id, notif_type='system', title='Proposal Declined', message=f"Your skill trade proposal for {proposal.skill.offering_skill} was declined.")
+        flash("Proposal declined.", "info")
+
+    db.session.commit()
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/delete/<string:post_type>/<int:post_id>', methods=['POST'])
+def delete_post(post_type, post_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    model_map = {
+        'tutor': (TutoringListing, 'tutor_id'),
+        'study': (StudyPartnerPost, 'user_id'),
+        'skill': (SkillExchange, 'user_id'),
+        'event': (CampusEvent, 'created_by'),
+    }
+    if post_type not in model_map:
+        flash("Invalid post type.", "danger")
+        return redirect(url_for('dashboard'))
+
+    model, owner_field = model_map[post_type]
+    post = db.session.get(model, post_id)
+    if not post or getattr(post, owner_field) != session['user_id']:
+        flash("You are not authorized to delete this post.", "danger")
+        return redirect(url_for('dashboard'))
+
+    post.status = 'Deleted'
+    db.session.commit()
+    redirect_map = {'tutor': 'tutors', 'study': 'study_partners', 'skill': 'skill_exchange', 'event': 'events'}
+    flash("Your post has been deleted.", "success")
+    return redirect(url_for(redirect_map[post_type]))
 
 @app.route('/events', methods=['GET', 'POST'])
 def events():
@@ -1260,37 +1815,54 @@ def events():
         return redirect(url_for('login'))
         
     if request.method == 'POST':
+        if check_restrictions():
+            flash("Your account is restricted from posting.", "danger")
+            return redirect(url_for('dashboard'))
+        formatted_datetime = f"{request.form.get('event_date', '')} at {request.form.get('event_time', '')}"
+        capacity_raw = request.form.get('capacity_limit', '')
+        safe_capacity = int(capacity_raw) if capacity_raw.isdigit() else 0
         new_event = CampusEvent(
-            created_by=session['user_id'], # Using dynamic session ID
+            created_by=session['user_id'],
             title=request.form['title'],
             category=request.form['category'],
-            event_date=request.form['date'],
+            event_date=formatted_datetime,
             location_text=request.form['location'],
             target_audience=request.form['target_audience'],
-            capacity_limit = request.form['capacity_limit'] if request.form['capacity_limit'] else 0,
+            capacity_limit=safe_capacity,
             description=request.form['description']
         )
         db.session.add(new_event)
         db.session.commit()
         return redirect(url_for('events'))
     
-    all_events = CampusEvent.query.order_by(CampusEvent.id.desc()).all()
+    all_events = CampusEvent.query.join(User).filter(User.is_banned == False).order_by(CampusEvent.id.desc()).all()
     return render_template('events.html', events=all_events)
 
-@app.route('/rsvp/<int:event_id>/<string:status>')
-@app.route('/events/<int:event_id>/rsvp/<string:status>')
+@app.route('/rsvp/<int:event_id>/<string:status>', methods=['POST'])
+@app.route('/events/<int:event_id>/rsvp/<string:status>', methods=['POST'])
 def rsvp(event_id, status):
     if 'user_id' not in session:
         return redirect(url_for('login'))
-        
+    event = db.session.get(CampusEvent, event_id)
+    if not event:
+        flash("Event not found.", "danger")
+        return redirect(url_for('events'))
     existing_rsvp = EventParticipant.query.filter_by(event_id=event_id, user_id=session['user_id']).first()
-    
+    is_new_going = status == 'going' and (not existing_rsvp or existing_rsvp.attendance_status != 'going')
+    current_count = 0
+    if status == 'going' and event.capacity_limit > 0:
+        current_count = EventParticipant.query.filter_by(event_id=event_id, attendance_status='going').count()
+        if current_count >= event.capacity_limit and is_new_going:
+            flash("Sorry, this event is at full capacity!", "warning")
+            return redirect(url_for('events'))
     if existing_rsvp:
         existing_rsvp.attendance_status = status
     else:
-        new_rsvp = EventParticipant(event_id=event_id, user_id=session['user_id'], attendance_status=status)
-        db.session.add(new_rsvp)
-        
+        db.session.add(EventParticipant(event_id=event_id, user_id=session['user_id'], attendance_status=status))
+    if is_new_going and session['user_id'] != event.created_by:
+        trigger_notification(target_user_id=event.created_by, notif_type='event', title='🎟️ New Event RSVP', message=f"{session['full_name']} just RSVP'd to {event.title}!")
+        if event.capacity_limit > 0 and (current_count + 1) == event.capacity_limit:
+            trigger_notification(target_user_id=event.created_by, notif_type='system', title='🔥 Event at Full Capacity!', message=f"Congratulations! {event.title} has reached maximum capacity.")
     db.session.commit()
     return redirect(url_for('events'))
 
@@ -1302,28 +1874,44 @@ def study_partners():
         return redirect(url_for('login'))
         
     if request.method == 'POST':
+        if check_restrictions():
+            flash("Your account is restricted from posting.", "danger")
+            return redirect(url_for('dashboard'))
+            
+        try:
+            safe_group_size = int(request.form.get('group_size', 2))
+        except ValueError:
+            safe_group_size = 2
+            
         new_post = StudyPartnerPost(
-            user_id=session['user_id'], # Using dynamic session ID
+            user_id=session['user_id'],
             title=request.form['course'], 
             goals=request.form['goals'],
             preferred_study_time=request.form['schedule'],
             current_topic=request.form['current_topic'],
             prep_goal=request.form['prep_goal'],
             study_style=request.form['study_style'],
-            group_size=request.form['group_size'],
+            group_size=safe_group_size,
             status='open'
         )
         db.session.add(new_post)
         db.session.commit()
         return redirect(url_for('study_partners'))
     
-    all_posts = StudyPartnerPost.query.order_by(StudyPartnerPost.id.desc()).all()
-    return render_template('study_partners.html', partners=all_posts)
+    all_posts = StudyPartnerPost.query.join(User).filter(User.is_banned == False).order_by(StudyPartnerPost.id.desc()).all()
+    my_reports = Report.query.filter_by(reporter_id=session['user_id'], reported_type='Study Group').all()
+    reported_ids = [report.reported_id for report in my_reports]
+    return render_template('study_partners.html', partners=all_posts, reported_ids=reported_ids)
 
 @app.route('/create_session/<int:post_id>', methods=['POST'])
 def create_session(post_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
+        
+    post = db.session.get(StudyPartnerPost, post_id)
+    if not post or post.user_id != session['user_id']:
+        flash("You are not authorized to modify this post.", "danger")
+        return redirect(url_for('study_partners'))
         
     new_session = StudySession(
         created_by=session['user_id'], # Using dynamic session ID
@@ -1335,9 +1923,7 @@ def create_session(post_id):
     )
     db.session.add(new_session)
     
-    post = StudyPartnerPost.query.get(post_id)
-    if post:
-        post.status = 'matched'
+    post.status = 'matched'
         
     db.session.commit()
     return redirect(url_for('study_partners')) 
@@ -1346,63 +1932,96 @@ def create_session(post_id):
 def start_chat(c_type, c_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
-        
-    existing_conv = Conversation.query.filter_by(context_type=c_type, context_id=c_id).first()
-    
-    if not existing_conv:
-        new_conv = Conversation(
-            title=f"Inquiry regarding {c_type}",
-            context_type=c_type,
-            context_id=c_id
-        )
-        db.session.add(new_conv)
-        db.session.commit()
-        
-    return redirect(url_for('messages'))
+    receiver_id = None
 
-@app.route('/messages', methods=['GET', 'POST'])
-def messages():
+    if c_type == "Tutor":
+        listing = db.session.get(TutoringListing, c_id)
+        if listing:
+            receiver_id = listing.tutor_id
+    elif c_type == "Study Partner":
+        post = db.session.get(StudyPartnerPost, c_id)
+        if post:
+            receiver_id = post.user_id
+    elif c_type == "Skill Exchange":
+        skill = db.session.get(SkillExchange, c_id)
+        if skill:
+            receiver_id = skill.user_id
+
+    if not receiver_id or receiver_id == session["user_id"]:
+        flash("Cannot start a chat with this user.", "warning")
+        return redirect(request.referrer or url_for("dashboard"))
+
+    existing_conv = Conversation.query.filter(
+        ((Conversation.participant1_id == session["user_id"]) & (Conversation.participant2_id == receiver_id)) |
+        ((Conversation.participant1_id == receiver_id) & (Conversation.participant2_id == session["user_id"])),
+        Conversation.context_type == c_type,
+        Conversation.context_id == c_id,
+    ).first()
+
+    if not existing_conv:
+        existing_conv = Conversation(
+            participant1_id=session["user_id"],
+            participant2_id=receiver_id,
+            context_type=c_type,
+            context_id=c_id,
+        )
+        db.session.add(existing_conv)
+        db.session.commit()
+
+    return redirect(url_for("messages", conv_id=existing_conv.id))
+
+@app.route('/messages')
+@app.route('/messages/<int:conv_id>', methods=['GET', 'POST'])
+def messages(conv_id=None):
     if 'user_id' not in session:
         return redirect(url_for('login'))
-        
-    active_conv = Conversation.query.order_by(Conversation.id.desc()).first()
-    
-    if not active_conv:
-        active_conv = Conversation(title="General Academic Chat")
-        db.session.add(active_conv)
-        db.session.commit()
-        
-    if request.method == 'POST':
+    current_user_id = session["user_id"]
+
+    my_convs = Conversation.query.filter(
+        (Conversation.participant1_id == current_user_id) |
+        (Conversation.participant2_id == current_user_id)
+    ).order_by(Conversation.id.desc()).all()
+    active_conv = None
+
+    if conv_id:
+        active_conv = db.session.get(Conversation, conv_id)
+        if active_conv and current_user_id not in [active_conv.participant1_id, active_conv.participant2_id]:
+            active_conv = None
+    elif my_convs:
+        active_conv = my_convs[0]
+
+    if request.method == 'POST' and active_conv:
         new_msg = Message(
             conversation_id=active_conv.id,
-            sender_id=session['user_id'], # Using dynamic session ID
-            message_text=request.form['content'],
+            sender_id=current_user_id,
+            message_text=request.form.get('content', ''),
             is_seen=0 
         )
         db.session.add(new_msg)
-        db.session.commit()
-        return redirect(url_for('messages'))
-    
-    chat_messages = Message.query.filter_by(conversation_id=active_conv.id).all()
-    user = db.session.get(User, session["user_id"])
-    direct_messages = []
-    if user:
-        identities = [user.full_name.lower(), user.username.lower(), user.email.lower()]
-        direct_messages = (
-            DirectMessage.query
-            .filter(
-                (func.lower(DirectMessage.sender).in_(identities)) |
-                (func.lower(DirectMessage.receiver).in_(identities))
+        other_user = active_conv.get_other_user(current_user_id)
+        if other_user:
+            trigger_notification(
+                target_user_id=other_user.id,
+                notif_type="message",
+                title="New Message",
+                message=f"{session.get('full_name', 'Someone')} sent you a message!",
             )
-            .order_by(DirectMessage.created_at.desc())
-            .limit(20)
-            .all()
-        )
+        db.session.commit()
+        return redirect(url_for('messages', conv_id=active_conv.id))
+
+    if active_conv:
+        unseen_msgs = Message.query.filter_by(conversation_id=active_conv.id, is_seen=0).filter(Message.sender_id != current_user_id).all()
+        for msg in unseen_msgs:
+            msg.is_seen = 1
+        if unseen_msgs:
+            db.session.commit()
+
+    chat_messages = Message.query.filter_by(conversation_id=active_conv.id).all() if active_conv else []
     
     return render_template('messages.html', 
+                           conversations=my_convs,
                            messages=chat_messages, 
-                           active_conv=active_conv,
-                           direct_messages=direct_messages)
+                           active_conv=active_conv)
 
 
 @app.route("/home")
@@ -1412,10 +2031,15 @@ def portal_home():
         return login_redirect
 
     major = request.args.get("major") or session.get("user_major")
-    tutor_query = Tutor.query
+    tutor_query = TutoringListing.query.join(User).filter(TutoringListing.status == "Active")
     if major:
-        tutor_query = tutor_query.filter(func.lower(Tutor.major) == major.lower())
-    top_tutors = tutor_query.order_by(Tutor.rating.desc(), Tutor.review_count.desc()).limit(5).all()
+        tutor_query = tutor_query.filter(
+            (func.lower(User.department) == major.lower()) |
+            (func.lower(User.major) == major.lower())
+        )
+    top_tutors = tutor_query.all()
+    top_tutors.sort(key=lambda listing: (listing.user.average_rating, listing.user.review_count, listing.id), reverse=True)
+    top_tutors = top_tutors[:5]
 
     total_notes = Note.query.count()
     recent_notes = Note.query.order_by(Note.created_at.desc()).limit(5).all()
@@ -1498,58 +2122,11 @@ def my_listings():
 def item_details(item_id):
     item = Item.query.get_or_404(item_id)
     current_user = db.session.get(User, session.get("user_id")) if session.get("user_id") else None
-    can_view_item_on_personal_map = False
-    if current_user:
-        if current_user.email.lower() == item.seller_email.lower():
-            can_view_item_on_personal_map = True
-        else:
-            can_view_item_on_personal_map = (
-                DirectMessage.query.filter(
-                    func.lower(DirectMessage.sender) == current_user.email.lower(),
-                    func.lower(DirectMessage.receiver) == item.seller_email.lower(),
-                    DirectMessage.context_type == f"item:{item.id}",
-                ).first()
-                is not None
-            )
     return render_template(
         "item_details.html",
         item=item,
         current_user=current_user,
-        can_view_item_on_personal_map=can_view_item_on_personal_map,
     )
-
-
-@app.route("/item/<int:item_id>/message", methods=["POST"])
-def message_item_seller(item_id):
-    item = Item.query.get_or_404(item_id)
-    current_user = db.session.get(User, session.get("user_id")) if session.get("user_id") else None
-    if not current_user:
-        flash("Please log in to message the seller.", "warning")
-        return redirect(url_for("login"))
-
-    if current_user.email.lower() == item.seller_email.lower():
-        flash("This is your own listing.", "info")
-        return redirect(url_for("item_details", item_id=item.id))
-
-    message_text = (request.form.get("message") or "").strip()
-    if not message_text:
-        flash("Please write a message before sending.", "warning")
-        return redirect(url_for("item_details", item_id=item.id))
-
-    try:
-        db.session.add(DirectMessage(
-            sender=current_user.email,
-            receiver=item.seller_email,
-            message=message_text,
-            context_type=f"item:{item.id}",
-        ))
-        db.session.commit()
-        flash("Your message has been sent to the seller.", "success")
-    except Exception as error:
-        db.session.rollback()
-        flash(f"Error sending message: {error}", "danger")
-
-    return redirect(url_for("item_details", item_id=item.id))
 
 
 @app.route("/item/<int:item_id>/edit", methods=["GET", "POST"])
@@ -2036,7 +2613,7 @@ def map_view():
     return render_template("map.html", locations=locations)
 
 
-@app.route("/post_tutor", methods=["GET", "POST"])
+@app.route("/campus-tutors/post", methods=["GET", "POST"])
 def post_tutor():
     current_user = db.session.get(User, session.get("user_id")) if session.get("user_id") else None
     if request.method == "POST":
@@ -2056,7 +2633,7 @@ def post_tutor():
             db.session.add(tutor)
             db.session.commit()
             flash("Tutor posted successfully.", "success")
-            return redirect(url_for("tutors"))
+            return redirect(url_for("browse_rides"))
         except Exception as error:
             db.session.rollback()
             flash(f"Error posting tutor: {error}", "danger")
@@ -2064,14 +2641,14 @@ def post_tutor():
     return render_template("post_tutor.html", current_user=current_user)
 
 
-@app.route("/tutors/<int:tutor_id>")
+@app.route("/campus-tutors/<int:tutor_id>")
 def tutor_details(tutor_id):
     tutor = Tutor.query.get_or_404(tutor_id)
     recent_reviews = TutorReview.query.filter_by(tutor_id=tutor.id).order_by(TutorReview.created_at.desc()).limit(5).all()
     return render_template("tutor_details.html", tutor=tutor, recent_reviews=recent_reviews)
 
 
-@app.route("/tutors/<int:tutor_id>/book", methods=["POST"])
+@app.route("/campus-tutors/<int:tutor_id>/book", methods=["POST"])
 def book_tutor_profile(tutor_id):
     current_user = db.session.get(User, session.get("user_id")) if session.get("user_id") else None
     if not current_user:
@@ -2109,7 +2686,7 @@ def book_tutor_profile(tutor_id):
     ))
 
 
-@app.route("/tutors/<int:tutor_id>/contact", methods=["GET", "POST"])
+@app.route("/campus-tutors/<int:tutor_id>/contact", methods=["GET", "POST"])
 def tutor_contact(tutor_id):
     tutor = Tutor.query.get_or_404(tutor_id)
     if request.method == "POST":
@@ -2132,7 +2709,7 @@ def tutor_contact(tutor_id):
     return render_template("tutor_contact.html", tutor=tutor)
 
 
-@app.route("/tutors/<int:tutor_id>/review", methods=["GET", "POST"])
+@app.route("/campus-tutors/<int:tutor_id>/review", methods=["GET", "POST"])
 def tutor_review(tutor_id):
     tutor = Tutor.query.get_or_404(tutor_id)
     if request.method == "POST":
@@ -2263,29 +2840,33 @@ def dashboard():
     
     my_tutors = TutoringListing.query.filter_by(tutor_id=current_user_id).all()
     my_study_posts = StudyPartnerPost.query.filter_by(user_id=current_user_id).all()
+    my_skills = SkillExchange.query.filter_by(user_id=current_user_id).all()
     my_rsvps = EventParticipant.query.filter_by(user_id=current_user_id).all()
+    my_reports = Report.query.filter_by(reporter_id=current_user_id).order_by(Report.id.desc()).all()
     my_notifications = (
         Notification.query
-        .filter_by(user_id=current_user_id, type="note_rating")
+        .filter_by(user_id=current_user_id)
         .order_by(Notification.id.desc())
         .limit(5)
         .all()
     )
+    unread_count = Notification.query.filter_by(user_id=current_user_id, is_read=False).count()
     all_notes = Note.query.order_by(Note.created_at.desc()).all()
     my_items = Item.query.filter(func.lower(Item.seller_email) == current_user.email.lower()).order_by(Item.created_at.desc()).limit(5).all()
     my_rides = Ride.query.filter(func.lower(Ride.user_id) == current_user.username.lower()).order_by(Ride.travel_date.asc(), Ride.travel_time.asc()).limit(5).all()
-    my_top_tutors = Tutor.query.filter(
-        (func.lower(Tutor.contact_info) == current_user.email.lower()) |
-        (func.lower(Tutor.name) == current_user.full_name.lower())
-    ).order_by(Tutor.created_at.desc()).limit(5).all()
-    direct_messages = DirectMessage.query.filter(
-        (func.lower(DirectMessage.sender) == current_user.email.lower()) |
-        (func.lower(DirectMessage.receiver) == current_user.email.lower()) |
-        (func.lower(DirectMessage.sender) == current_user.username.lower()) |
-        (func.lower(DirectMessage.receiver) == current_user.username.lower()) |
-        (func.lower(DirectMessage.sender) == current_user.full_name.lower()) |
-        (func.lower(DirectMessage.receiver) == current_user.full_name.lower())
-    ).order_by(DirectMessage.created_at.desc()).limit(5).all()
+    incoming_tutor_requests = (
+        TutoringBooking.query
+        .join(TutoringListing)
+        .filter(TutoringListing.tutor_id == current_user_id, TutoringBooking.status == "Pending")
+        .order_by(TutoringBooking.id.desc())
+        .all()
+    )
+    incoming_proposals = (
+        SkillProposal.query
+        .join(SkillExchange)
+        .filter(SkillExchange.user_id == current_user_id, SkillProposal.status == "Pending")
+        .all()
+    )
     booked_ride_ids = [
         ride_id for (ride_id,) in (
             db.session.query(Booking.ride_id)
@@ -2321,27 +2902,36 @@ def dashboard():
         "upcoming_sessions": ScheduledStudySession.query.filter_by(created_by=current_user_id).count(),
         "items": Item.query.filter(func.lower(Item.seller_email) == current_user.email.lower()).count(),
         "rides": Ride.query.filter(func.lower(Ride.user_id) == current_user.username.lower()).count(),
-        "top_tutors": Tutor.query.filter(
-            (func.lower(Tutor.contact_info) == current_user.email.lower()) |
-            (func.lower(Tutor.name) == current_user.full_name.lower())
-        ).count(),
-        "messages": len(direct_messages),
+        "top_tutors": TutoringListing.query.filter_by(tutor_id=current_user_id).count(),
+        "messages": Conversation.query.filter((Conversation.participant1_id == current_user_id) | (Conversation.participant2_id == current_user_id)).count(),
     }
 
     return render_template('dashboard.html', 
                            user=current_user,
                            tutors=my_tutors, 
-                           top_tutors=my_top_tutors,
+                           incoming_tutor_requests=incoming_tutor_requests,
+                           incoming_proposals=incoming_proposals,
                            study_posts=my_study_posts, 
+                           skills=my_skills,
                            rsvps=my_rsvps,
+                           reports=my_reports,
                            notifications=my_notifications,
+                           unread_count=unread_count,
                            note_cards=build_note_cards(all_notes, viewer_id=current_user_id),
                            stats=stats,
                            items=my_items,
                            rides=my_rides,
-                           direct_messages=direct_messages,
                            map_counts=map_counts)
 
+@app.route('/settings')
+def settings():
+    flash("⚙️ Account Settings page is under construction for Phase 2.", "info")
+    return redirect(url_for('dashboard'))
+
+@app.route('/save_notif_prefs', methods=['POST'])
+def save_notif_prefs():
+    flash("🔕 Your notification preferences and Quiet Hours have been updated.", "success")
+    return redirect(url_for('dashboard'))
 
 if __name__ == '__main__':
     initialize_database()

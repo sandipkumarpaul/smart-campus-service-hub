@@ -3,3 +3,5 @@ venv/
 env/
 .vscode/
 *.pyc
+token.json
+credentials.json

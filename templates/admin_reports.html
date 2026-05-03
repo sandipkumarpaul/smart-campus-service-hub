@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold text-danger">🛡️ Moderation Queue</h2>
+        <span class="badge bg-dark fs-6">{{ reports|length }} Total Reports</span>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4">Ticket ID</th>
+                            <th>Reported Type</th>
+                            <th>Item ID</th>
+                            <th>Reason</th>
+                            <th>Reported By</th>
+                            <th>Status</th>
+                            <th class="text-end pe-4">Admin Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for report in reports %}
+                        <tr>
+                            <td class="ps-4 fw-bold text-muted">#{{ report.id }}</td>
+                            <td><span class="badge bg-secondary">{{ report.reported_type }}</span></td>
+                            <td class="fw-bold">{{ report.reported_id }} <a href="#" class="btn btn-sm btn-link text-decoration-none" title="View Content">👁️ View</a></td>
+                            <td class="text-danger fw-bold text-break" style="max-width: 300px;">{{ report.reason }}</td>
+                            <td>
+                                {% if report.reporter %}
+                                    {{ report.reporter.full_name }}
+                                {% else %}
+                                    <span class="text-muted fst-italic">Deleted User</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge {% if 'Approved' in report.status %}bg-success{% elif 'Rejected' in report.status %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                    {{ report.status }}
+                                </span>
+                            </td>
+                            <td class="text-end pe-4">
+                                {% if report.status == 'Pending' %}
+                                <form action="{{ url_for('resolve_report', report_id=report.id, action='approve') }}" method="POST" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger fw-bold" onclick="return confirm('APPROVE REPORT: This will immediately BAN the user who created this post. Proceed?');">🚨 Approve (Ban User)</button>
+                                </form>
+                                <form action="{{ url_for('resolve_report', report_id=report.id, action='reject') }}" method="POST" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary fw-bold ms-1" onclick="return confirm('REJECT REPORT: This will penalize the reporter\'s trust score. Proceed?');">❌ Reject (Penalize)</button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5 text-muted">🎉 The moderation queue is completely empty! Great job campus!</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
