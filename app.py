@@ -1932,6 +1932,9 @@ def create_session(post_id):
 def start_chat(c_type, c_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    
+    # FIX: Force decode the space for Vercel's serverless environment
+    c_type = c_type.replace('%20', ' ')
     receiver_id = None
 
     if c_type == "Tutor":
