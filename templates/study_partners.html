@@ -10,12 +10,10 @@
                     <label class="fw-bold small">Course Name (e.g. CSE221)</label>
                     <input type="text" name="course" class="form-control" required>
                 </div>
-                
                 <div class="mb-3">
                     <label class="fw-bold small">Current Topic / Chapter</label>
                     <input type="text" name="current_topic" class="form-control" placeholder="e.g. Graph Algorithms" required>
                 </div>
-
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="fw-bold small">Prep Goal</label>
@@ -35,7 +33,6 @@
                         </select>
                     </div>
                 </div>
-
                 <div class="row align-items-end">
                     <div class="col-md-6 mb-3">
                         <label class="fw-bold small">Weekly Availability</label>
@@ -50,12 +47,10 @@
                         </select>
                     </div>
                 </div>
-
                 <div class="mb-3">
                     <label class="fw-bold small">Personal Note / Goal</label>
                     <textarea name="goals" class="form-control" rows="2" placeholder="Looking to solve past papers..." required></textarea>
                 </div>
-
                 <button type="submit" class="btn btn-info text-white w-100 fw-bold">Publish Study Card</button>
             </form>
         </div>
@@ -66,25 +61,21 @@
             <h2 class="mb-0">Study Cards Feed</h2>
             <button class="btn btn-outline-secondary btn-sm">⚙️ Filter Matches</button>
         </div>
-        
+
         {% for partner in partners %}
             {% if partner.status == 'open' %}
-            <div class="card mb-4 shadow-sm border-0">
+            <div class="card mb-4 shadow-sm border-0" id="card-{{ partner.id }}">
                 <div class="card-body p-4">
-                    
                     <div class="alert alert-success py-2 px-3 mb-3 d-flex align-items-center" style="font-size: 0.85rem;">
-                        <span class="fs-5 me-2">🤝</span> 
+                        <span class="fs-5 me-2">🤝</span>
                         <strong>High Compatibility:</strong> You both have activity in the CS department on {{ partner.preferred_study_time }}.
                     </div>
-
                     <div class="d-flex justify-content-between">
                         <div>
                             <h4 class="card-title text-info fw-bold mb-1">{{ partner.title }}</h4>
                             <h6 class="text-muted mb-3">Student: {{ partner.user.full_name }} | 🎯 Topic: {{ partner.current_topic }}</h6>
                         </div>
-                        <div class="text-end">
-                            <span class="badge bg-light text-dark border px-2 py-1 mb-1 d-block">👥 Max: {{ partner.group_size }} people</span>
-                        </div>
+                        <span class="badge bg-light text-dark border px-2 py-1 mb-1">👥 Max: {{ partner.group_size }} people</span>
                     </div>
 
                     <div class="mb-3">
@@ -98,17 +89,30 @@
                     </div>
 
                     <p class="fst-italic text-secondary border-start border-3 border-info ps-3 mb-3">"{{ partner.goals }}"</p>
-                    
                     <hr>
-                    
-                    <div class="d-flex gap-2">
-                        <a href="{{ url_for('start_chat', c_type='Study Partner', c_id=partner.id) }}" class="btn btn-outline-info px-4">💬 Message</a>
-                        
-                        <button class="btn btn-info text-white px-4 fw-bold ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#plannerForm{{ partner.id }}">
-                            📝 Plan Session
-                        </button>
+
+                    <div class="d-flex gap-2 align-items-center">
+                        {% if partner.user.id == session.get('user_id') %}
+                            <button class="btn btn-info text-white px-4 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#plannerForm{{ partner.id }}">📝 Plan Session</button>
+                            <div class="ms-auto d-flex align-items-center gap-2">
+                                <span class="badge bg-light text-secondary border">📌 This is your study card</span>
+                                <form action="{{ url_for('delete_post', post_type='study', post_id=partner.id) }}" method="POST" onsubmit="return confirm('Delete this study card?');">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm">🗑️ Delete</button>
+                                </form>
+                            </div>
+                        {% else %}
+                            <a href="{{ url_for('start_chat', c_type='Study Partner', c_id=partner.id) }}" class="btn btn-outline-info px-4">💬 Message</a>
+                            <div class="ms-auto d-flex gap-2">
+                                {% if partner.id in reported_ids %}
+                                    <button class="btn btn-outline-danger px-3" disabled title="Reported">🚩 Reported</button>
+                                {% else %}
+                                    <button class="btn btn-outline-danger px-3" data-bs-toggle="modal" data-bs-target="#reportStudyModal{{ partner.id }}">🚩</button>
+                                {% endif %}
+                            </div>
+                        {% endif %}
                     </div>
 
+                    {% if partner.user.id == session.get('user_id') %}
                     <div class="collapse mt-3" id="plannerForm{{ partner.id }}">
                         <div class="card card-body bg-light border-0 border-start border-4 border-success">
                             <h6 class="fw-bold text-success mb-3">Collaborative Session Planner</h6>
@@ -141,12 +145,50 @@
                             </form>
                         </div>
                     </div>
+                    {% else %}
+                    <div class="modal fade" id="reportStudyModal{{ partner.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content border-0 border-top border-4 border-danger shadow">
+                                <div class="modal-header bg-light">
+                                    <h5 class="modal-title fw-bold text-danger">🚩 Report Study Group</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <form action="{{ url_for('submit_report') }}" method="POST">
+                                    <div class="modal-body">
+                                        <p class="small text-muted mb-3">You are reporting the study post <strong>"{{ partner.title }}"</strong> posted by {{ partner.user.full_name }}.</p>
+                                        <input type="hidden" name="reported_type" value="Study Group">
+                                        <input type="hidden" name="reported_id" value="{{ partner.id }}">
+                                        <div class="mb-3">
+                                            <label class="form-label fw-bold small">Reason for reporting:</label>
+                                            <select name="reason" class="form-select" required>
+                                                <option value="" disabled selected>Select a reason...</option>
+                                                <option value="Fake/Spam Listing">Fake or Spam Listing</option>
+                                                <option value="Inappropriate Content">Inappropriate Content</option>
+                                                <option value="Offensive Language">Offensive Language</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                        </div>
 
+                                    </div>
+                                    <div class="modal-footer bg-light border-0">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                                        <button type="submit" class="btn btn-danger btn-sm fw-bold">Submit to Admin</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
         {% else %}
-        <p class="text-muted">No study cards posted yet. Be the first to start a group!</p>
+        <div class="card card-surface border-0 text-center py-5">
+            <div class="mb-3" style="font-size: 3rem;">📚</div>
+            <h4 class="fw-bold">No Study Cards Yet</h4>
+            <p class="text-muted">Be the first to start a group.</p>
+            <button class="btn btn-info text-white mt-2 fw-bold" onclick="document.querySelector('form').scrollIntoView();">Create the First Group</button>
+        </div>
         {% endfor %}
     </div>
 </div>

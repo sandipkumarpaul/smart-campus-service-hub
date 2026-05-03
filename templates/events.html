@@ -11,19 +11,23 @@
                     <input type="text" name="title" class="form-control" required>
                 </div>
                 
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Type</label>
+                    <select name="category" class="form-select">
+                        <option value="Workshop">Workshop</option>
+                        <option value="Seminar">Seminar</option>
+                        <option value="Club Activity">Club Activity</option>
+                        <option value="Social">Social</option>
+                    </select>
+                </div>
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Type</label>
-                        <select name="category" class="form-select">
-                            <option value="Workshop">Workshop</option>
-                            <option value="Seminar">Seminar</option>
-                            <option value="Club Activity">Club Activity</option>
-                            <option value="Social">Social</option>
-                        </select>
+                        <label class="form-label fw-bold">Date</label>
+                        <input type="date" name="event_date" class="form-control" required>
                     </div>
                     <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Date & Time</label>
-                        <input type="text" name="date" class="form-control" placeholder="Oct 15, 2 PM" required>
+                        <label class="form-label fw-bold">Time</label>
+                        <input type="time" name="event_time" class="form-control" required>
                     </div>
                 </div>
 
@@ -39,7 +43,7 @@
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Capacity</label>
-                        <input type="number" name="capacity_limit" class="form-control" placeholder="e.g. 30">
+                        <input type="number" name="capacity_limit" class="form-control" placeholder="e.g. 30" min="0">
                     </div>
                 </div>
 
@@ -47,7 +51,7 @@
                     <label class="form-label fw-bold">Agenda / Description</label>
                     <textarea name="description" class="form-control" rows="3" required></textarea>
                 </div>
-                <button type="submit" class="btn btn-warning w-100">Publish Event</button>
+                <button type="submit" class="btn btn-warning w-100 fw-bold">Publish Event</button>
             </form>
         </div>
     </div>
@@ -68,33 +72,46 @@
                         
                         <p class="card-text mt-3">{{ event.description }}</p>
                         
+                        {% set counts = namespace(going=0, interested=0) %}
+                        {% for p in event.participants %}
+                            {% if p.attendance_status == 'going' %}{% set counts.going = counts.going + 1 %}
+                            {% elif p.attendance_status == 'interested' %}{% set counts.interested = counts.interested + 1 %}
+                            {% endif %}
+                        {% endfor %}
                         <hr>
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 {% if event.capacity_limit > 0 %}
-                                    <strong>{{ event.participants|length }} / {{ event.capacity_limit }}</strong> spots filled
+                                    <strong>{{ counts.going }} / {{ event.capacity_limit }}</strong> Going
+                                    <span class="text-muted ms-2">· {{ counts.interested }} Interested</span>
                                 {% else %}
-                                    <strong>{{ event.participants|length }}</strong> people interested
+                                    <strong>{{ counts.going }}</strong> Going <span class="text-muted ms-2">· {{ counts.interested }} Interested</span>
                                 {% endif %}
                             </div>
                             <div>
                                 {% set user_status = namespace(state='none') %}
                                 {% for participant in event.participants %}
-                                    {% if participant.user_id == 1 %}
+                                    {% if participant.user_id == session.get('user_id') %}
                                         {% set user_status.state = participant.attendance_status %}
                                     {% endif %}
                                 {% endfor %}
 
                                 {% if user_status.state == 'going' %}
-                                    <button class="btn btn-sm btn-success" disabled>🎉 You're Going!</button>
-                                
+                                    <button class="btn btn-sm btn-success fw-bold" disabled>🎉 You're Going!</button>
+                                    <form action="{{ url_for('rsvp', event_id=event.id, status='cancelled') }}" method="POST" style="display:inline-block;" class="ms-1">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">❌ Cancel</button>
+                                    </form>
                                 {% elif user_status.state == 'interested' %}
-                                    <button class="btn btn-sm btn-warning text-dark" disabled>⭐ Interested</button>
-                                    <a href="{{ url_for('rsvp', event_id=event.id, status='going') }}" class="btn btn-sm btn-primary">✅ Change to RSVP</a>
-                                
+                                    <button class="btn btn-sm btn-warning text-dark fw-bold" disabled>⭐ Interested</button>
+                                    <form action="{{ url_for('rsvp', event_id=event.id, status='going') }}" method="POST" style="display:inline-block;" class="ms-1">
+                                        <button type="submit" class="btn btn-sm btn-primary fw-bold">✅ Change to RSVP</button>
+                                    </form>
+                                    <form action="{{ url_for('rsvp', event_id=event.id, status='cancelled') }}" method="POST" style="display:inline-block;" class="ms-1">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">❌</button>
+                                    </form>
                                 {% else %}
-                                    <a href="{{ url_for('rsvp', event_id=event.id, status='interested') }}" class="btn btn-sm btn-outline-secondary">⭐ Interested</a>
-                                    <a href="{{ url_for('rsvp', event_id=event.id, status='going') }}" class="btn btn-sm btn-primary">✅ RSVP</a>
+                                    <form action="{{ url_for('rsvp', event_id=event.id, status='interested') }}" method="POST" style="display:inline-block;"><button type="submit" class="btn btn-sm btn-outline-secondary fw-bold">⭐ Interested</button></form>
+                                    <form action="{{ url_for('rsvp', event_id=event.id, status='going') }}" method="POST" style="display:inline-block;" class="ms-1"><button type="submit" class="btn btn-sm btn-primary fw-bold">✅ RSVP</button></form>
                                 {% endif %}
                             </div>
                         </div>
@@ -103,7 +120,14 @@
             </div>
             {% else %}
             <div class="col-12">
-                <div class="alert alert-info">No upcoming events posted yet.</div>
+                <div class="card border-0 shadow-sm bg-white py-5 text-center mt-3">
+                    <div class="card-body">
+                        <div class="display-1 mb-3">🎟️</div>
+                        <h4 class="text-dark fw-bold mb-2">No Upcoming Events</h4>
+                        <p class="text-muted mb-4">The campus calendar is wide open. Host a workshop, seminar, or social gathering!</p>
+                        <button class="btn btn-primary px-4 fw-bold" onclick="document.querySelector('input[name=\'title\']').focus()">Post an Event</button>
+                    </div>
+                </div>
             </div>
             {% endfor %}
         </div>

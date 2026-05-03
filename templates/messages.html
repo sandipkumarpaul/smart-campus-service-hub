@@ -1,92 +1,105 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-8">
-        <div class="card shadow-sm border-0">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center p-3">
-                <h5 class="mb-0">💬 {{ active_conv.title }}</h5>
-                <span class="badge bg-light text-primary">Private Chat</span>
+<div class="card shadow-sm border-0 h-100" style="min-height: 70vh;">
+    <div class="row g-0 h-100">
+        <div class="col-md-4 border-end bg-white" style="min-height: 70vh;">
+            <div class="p-3 bg-light border-bottom">
+                <h5 class="mb-0 fw-bold">Recent Chats</h5>
             </div>
-            
-            {% if active_conv.context_type %}
-            <div class="bg-light p-3 border-bottom border-start border-4 border-warning">
-                <div class="d-flex align-items-center">
-                    <div class="fs-4 me-3">📌</div>
-                    <div>
-                        <small class="text-muted fw-bold text-uppercase">Referenced Post</small>
-                        <p class="mb-0 fw-bold text-dark">You are discussing a {{ active_conv.context_type }} listing.</p>
-                        <a href="#" class="text-decoration-none small">View Original Post ↗</a>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-            
-            <div class="card-body" style="height: 400px; overflow-y: auto; background-color: #F8FAFC;">
-                {% for msg in messages %}
-                
-                <div class="d-flex flex-column {% if msg.sender_id == 1 %}align-items-end{% else %}align-items-start{% endif %} mb-3">
-                    
-                    <div class="p-3 rounded-3 shadow-sm {% if msg.sender_id == 1 %}bg-primary text-white{% else %}bg-white border{% endif %}" style="max-width: 75%;">
-                        <strong class="d-block mb-1 {% if msg.sender_id == 1 %}text-light{% else %}text-primary{% endif %}">
-                            {{ msg.sender.full_name }}
-                        </strong>
-                        <p class="mb-0">{{ msg.message_text }}</p>
-                    </div>
-                    
-                    <small class="text-muted mt-1" style="font-size: 0.75rem;">
-                        Just now • 
-                        {% if msg.is_seen %}
-                            <span class="text-success fw-bold">✓✓ Read</span>
+            <div class="list-group list-group-flush">
+                {% for conv in conversations %}
+                <a href="{{ url_for('messages', conv_id=conv.id) }}" class="list-group-item list-group-item-action p-3 {% if active_conv and active_conv.id == conv.id %}bg-primary bg-opacity-10 border-start border-4 border-primary{% endif %}">
+                    <h6 class="mb-1 fw-bold text-dark">
+                        {{ conv.get_other_user(session['user_id']).full_name if conv.get_other_user(session['user_id']) else 'Campus User' }}
+                    </h6>
+                    <small class="badge bg-secondary mb-1">{{ conv.context_type }}</small>
+                    <p class="mb-0 small text-muted text-truncate">
+                        {% if conv.messages %}
+                            {{ conv.messages[-1].message_text }}
                         {% else %}
-                            <span>✓ Delivered</span>
+                            Start chatting...
                         {% endif %}
-                    </small>
-                </div>
-                
+                    </p>
+                </a>
                 {% else %}
-                <div class="text-center text-muted mt-5">
-                    <p>No messages yet. Say hello!</p>
+                <div class="p-4 text-center text-muted">
+                    <small>No active conversations yet.</small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="col-md-8 d-flex flex-column bg-light" style="min-height: 70vh;">
+            {% if active_conv %}
+            <div class="p-3 bg-white border-bottom shadow-sm d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold text-primary">
+                    💬 Chat with {{ active_conv.get_other_user(session['user_id']).full_name if active_conv.get_other_user(session['user_id']) else 'Campus User' }}
+                </h5>
+            </div>
+
+            <div class="bg-warning bg-opacity-25 p-3 border-bottom border-warning d-flex align-items-start">
+                <span class="fs-4 me-3">📌</span>
+                <div>
+                    <small class="fw-bold text-muted d-block text-uppercase">Referenced Post</small>
+                    <span class="fw-bold text-dark">You are discussing a {{ active_conv.context_type }} listing.</span><br>
+                    {% if active_conv.context_type == 'Tutor' %}
+                        <a href="{{ url_for('tutors') }}#card-{{ active_conv.context_id }}" class="small fw-bold">View Original Post ↗</a>
+                    {% elif active_conv.context_type == 'Study Partner' %}
+                        <a href="{{ url_for('study_partners') }}#card-{{ active_conv.context_id }}" class="small fw-bold">View Original Post ↗</a>
+                    {% elif active_conv.context_type == 'Skill Exchange' %}
+                        <a href="{{ url_for('skill_exchange') }}#card-{{ active_conv.context_id }}" class="small fw-bold">View Original Post ↗</a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="p-4 flex-grow-1 overflow-auto" id="chatBox" style="max-height: 50vh;">
+                {% for msg in messages %}
+                    {% if msg.sender_id == session.get('user_id') %}
+                    <div class="d-flex justify-content-end mb-3">
+                        <div class="bg-primary text-white p-3 rounded-3 shadow-sm" style="max-width: 75%;">
+                            <p class="mb-0" style="white-space: pre-wrap;">{{ msg.message_text }}</p>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="d-flex justify-content-start mb-3">
+                        <div class="bg-white border p-3 rounded-3 shadow-sm" style="max-width: 75%;">
+                            <p class="mb-0 text-dark" style="white-space: pre-wrap;">{{ msg.message_text }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                {% else %}
+                <div class="text-center text-muted my-5">
+                    <p>No messages yet. Say hello.</p>
                 </div>
                 {% endfor %}
             </div>
 
-            <div class="card-footer bg-white p-3">
-                <form action="{{ url_for('messages') }}" method="POST">
-                    <div class="input-group align-items-center">
-                        <button type="button" class="btn btn-light border text-secondary me-2 rounded" title="Attach File">
-                            📎
-                        </button>
-                        
-                        <input type="text" name="content" class="form-control rounded-start" placeholder="Type your message or paste a link..." required autocomplete="off">
-                        
-                        <button type="submit" class="btn btn-primary rounded-end">Send ✉️</button>
+            <div class="p-3 bg-white border-top">
+                <form action="{{ url_for('messages', conv_id=active_conv.id) }}" method="POST">
+                    <div class="input-group">
+                        <input type="text" name="content" class="form-control form-control-lg bg-light" placeholder="Type a message..." required autocomplete="off">
+                        <button type="submit" class="btn btn-primary px-4 fw-bold">Send</button>
                     </div>
                 </form>
             </div>
-        </div>
-
-        {% if direct_messages %}
-        <div class="card shadow-sm border-0 mt-4">
-            <div class="card-header bg-white">
-                <h5 class="mb-0 text-primary fw-bold">Marketplace & Tutor Messages</h5>
+            {% else %}
+            <div class="d-flex flex-column justify-content-center align-items-center h-100 text-muted">
+                <span class="fs-1 mb-3">📭</span>
+                <h5>Your Inbox is empty.</h5>
+                <p class="small">Reach out to a tutor or study partner to start a conversation.</p>
             </div>
-            <div class="list-group list-group-flush">
-                {% for direct in direct_messages %}
-                <div class="list-group-item">
-                    <div class="d-flex justify-content-between gap-2">
-                        <strong>{{ direct.sender }} to {{ direct.receiver }}</strong>
-                        <small class="text-muted">{{ direct.created_at.strftime('%b %d, %H:%M') if direct.created_at else '' }}</small>
-                    </div>
-                    <p class="mb-0 text-secondary">{{ direct.message }}</p>
-                    {% if direct.context_type %}
-                    <small class="text-muted">{{ direct.context_type }}</small>
-                    {% endif %}
-                </div>
-                {% endfor %}
-            </div>
+            {% endif %}
         </div>
-        {% endif %}
     </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var chatBox = document.getElementById("chatBox");
+    if (chatBox) {
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+});
+</script>
 {% endblock %}
