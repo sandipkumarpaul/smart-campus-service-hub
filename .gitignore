@@ -1,7 +1,30 @@
+# Python
 __pycache__/
-venv/
-env/
-.vscode/
 *.pyc
+.pytest_cache/
+venv/
+.venv/
+env/
+
+# Local configuration & secrets
+.env
 token.json
 credentials.json
+
+# Local databases
+*.db
+*.sqlite3
+instance/
+
+# User uploads (keep the folders, ignore their contents)
+uploads/*
+!uploads/.gitkeep
+static/uploads/*
+!static/uploads/.gitkeep
+
+# Editors, OS & tooling
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.vercel/
