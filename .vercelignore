@@ -1,0 +1,5 @@
+tests/
+docs/
+.github/
+pytest.ini
+requirements-dev.txt
