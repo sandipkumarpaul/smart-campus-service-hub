@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import secrets
 import uuid
 from datetime import datetime, timedelta
 from flask_sqlalchemy import SQLAlchemy
@@ -58,6 +59,11 @@ def build_database_uri():
     if database_url:
         return database_url
 
+    mysql_settings = ("DB_HOST", "DB_USER", "DB_PASS", "DB_PORT", "DB_NAME")
+    if not any(_clean_env_value(os.environ.get(name)) for name in mysql_settings):
+        # Zero-config local run: fall back to a SQLite file in Flask's instance folder.
+        return "sqlite:///campus_hub.db"
+
     db_user = _clean_env_value(os.environ.get("DB_USER")) or "root"
     db_password = _clean_env_value(os.environ.get("DB_PASS")) or ""
     db_host = _clean_env_value(os.environ.get("DB_HOST")) or "localhost"
@@ -71,15 +77,27 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 STATIC_UPLOAD_FOLDER = os.path.join(BASE_DIR, "static", "uploads")
 ALLOWED_EXTENSIONS = {"pdf", "docx"}
+ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "avif"}
+RSVP_STATUSES = {"going", "interested", "cancelled"}
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 GOOGLE_MAPS_API_KEY = _clean_env_value(os.environ.get("GOOGLE_MAPS_API_KEY")) or ""
 OPENROUTESERVICE_API_KEY = _clean_env_value(os.environ.get("OPENROUTESERVICE_API_KEY")) or ""
 DEFAULT_MAP_CENTER = (23.7806, 90.4070)
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(STATIC_UPLOAD_FOLDER, exist_ok=True)
+for _folder in (UPLOAD_FOLDER, STATIC_UPLOAD_FOLDER):
+    try:
+        os.makedirs(_folder, exist_ok=True)
+    except OSError:
+        # Serverless hosts (e.g. Vercel) mount the app read-only.
+        pass
 
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "***REMOVED***")
+_secret_key = _clean_env_value(os.environ.get("SECRET_KEY"))
+if not _secret_key:
+    _secret_key = secrets.token_hex(32)
+    app.logger.warning("SECRET_KEY is not set; using a random key. Sessions will reset on restart.")
+app.config["SECRET_KEY"] = _secret_key
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
@@ -108,8 +126,8 @@ def require_login_redirect():
     return None
 
 
-def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+def allowed_file(filename, extensions=ALLOWED_EXTENSIONS):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in extensions
 
 
 def build_note_cards(notes, viewer_id=None):
@@ -207,6 +225,13 @@ def trigger_notification(target_user_id, notif_type, title, message):
     db.session.add(new_notif)
 
 
+def visible_events_query():
+    return CampusEvent.query.join(User).filter(
+        User.is_banned == False,
+        CampusEvent.status.notin_(["Deleted", "Banned"]),
+    )
+
+
 def check_restrictions():
     if "user_id" in session:
         user = db.session.get(User, session["user_id"])
@@ -269,7 +294,7 @@ class User(db.Model):
         if score >= 20: return "🤝 Active Contributor"
         return "🌱 New Member"
 
-# Queenw's Feature 1: Study Partner Finder
+# Study Partner Finder
 class StudyPartnerPost(db.Model):
     __tablename__ = 'study_partner_posts'
     id = db.Column(db.Integer, primary_key=True)
@@ -286,10 +311,6 @@ class StudyPartnerPost(db.Model):
     status = db.Column(db.String(50), default='open')
     user = db.relationship('User', backref='study_posts')
 
-
-# Compatibility name used by the 24_april_final_scsh tests/modules.
-StudyPartner = StudyPartnerPost
-
 class StudySession(db.Model):
     __tablename__ = 'study_sessions'
     id = db.Column(db.Integer, primary_key=True)
@@ -301,7 +322,7 @@ class StudySession(db.Model):
     location_text = db.Column(db.String(255))
     status = db.Column(db.String(50), default='scheduled')
 
-# Sandip's Feature 1: Tutoring Listings
+# Peer Tutoring
 class TutoringListing(db.Model):
     __tablename__ = 'tutoring_listings'
     id = db.Column(db.Integer, primary_key=True)
@@ -333,7 +354,7 @@ class TutoringBooking(db.Model):
 
     student = db.relationship('User', foreign_keys=[student_id])
 
-# Sandip's Feature 2: Campus Events
+# Campus Events
 class CampusEvent(db.Model):
     __tablename__ = 'campus_events'
     id = db.Column(db.Integer, primary_key=True)
@@ -358,7 +379,7 @@ class EventParticipant(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     attendance_status = db.Column(db.String(50), default='interested') 
 
-# Queenw's Feature 2: Real-Time Messaging
+# Messaging
 class Conversation(db.Model):
     __tablename__ = 'conversations'
     id = db.Column(db.Integer, primary_key=True)
@@ -431,7 +452,7 @@ class SkillProposal(db.Model):
     proposer = db.relationship('User', foreign_keys=[proposer_id])
 
 
-# Dipto's Features
+# Notes, Deadlines & Scheduled Study Sessions
 class Note(db.Model):
     __tablename__ = "notes"
     __table_args__ = {'mysql_engine': 'InnoDB'}
@@ -495,7 +516,7 @@ class ScheduledStudySession(db.Model):
     status = db.Column(db.String(20), default="scheduled")
 
 
-# Dipto's merged modules from 24_april_final_scsh
+# Marketplace, Ride Sharing & Reviews
 class Item(db.Model):
     __tablename__ = "items"
     id = db.Column(db.Integer, primary_key=True)
@@ -545,16 +566,6 @@ class Booking(db.Model):
     ride = db.relationship("Ride", backref=db.backref("bookings", lazy=True))
 
 
-class DirectMessage(db.Model):
-    __tablename__ = "direct_messages"
-    id = db.Column(db.Integer, primary_key=True)
-    sender = db.Column(db.String(100), nullable=False)
-    receiver = db.Column(db.String(100), nullable=False)
-    message = db.Column(db.Text, nullable=False)
-    context_type = db.Column(db.String(80))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-
 class Review(db.Model):
     __tablename__ = "reviews"
     id = db.Column(db.Integer, primary_key=True)
@@ -571,59 +582,6 @@ class Review(db.Model):
 
     reviewer = db.relationship("User", foreign_keys=[reviewer_id], backref="given_reviews")
     reviewee = db.relationship("User", foreign_keys=[reviewee_id], backref="received_reviews")
-
-
-class Tutor(db.Model):
-    __tablename__ = "tutors"
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    major = db.Column(db.String(100), nullable=False)
-    subject = db.Column(db.String(100), nullable=False)
-    rating = db.Column(db.Float, nullable=False, default=0.0)
-    review_count = db.Column(db.Integer, nullable=False, default=0)
-    bio = db.Column(db.Text)
-    location = db.Column(db.String(255))
-    latitude = db.Column(db.Float)
-    longitude = db.Column(db.Float)
-    contact_info = db.Column(db.String(150), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-
-class TutorMessage(db.Model):
-    __tablename__ = "tutor_messages"
-    id = db.Column(db.Integer, primary_key=True)
-    tutor_id = db.Column(db.Integer, db.ForeignKey("tutors.id"), nullable=False)
-    student_id = db.Column(db.String(120), nullable=False)
-    student_contact = db.Column(db.String(150))
-    subject = db.Column(db.String(200))
-    message = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    tutor = db.relationship("Tutor", backref=db.backref("messages", lazy=True))
-
-
-class TutorReview(db.Model):
-    __tablename__ = "tutor_reviews"
-    id = db.Column(db.Integer, primary_key=True)
-    tutor_id = db.Column(db.Integer, db.ForeignKey("tutors.id"), nullable=False)
-    student_id = db.Column(db.String(120), nullable=False)
-    rating = db.Column(db.Integer, nullable=False)
-    review = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    tutor = db.relationship("Tutor", backref=db.backref("reviews", lazy=True))
-
-
-class TutorProfileBooking(db.Model):
-    __tablename__ = "tutor_profile_bookings"
-    id = db.Column(db.Integer, primary_key=True)
-    tutor_id = db.Column(db.Integer, nullable=False)
-    student_id = db.Column(db.Integer, nullable=False)
-    session_date = db.Column(db.String(50))
-    start_time = db.Column(db.String(50))
-    note = db.Column(db.Text)
-    status = db.Column(db.String(50), default="pending")
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 def _sync_merged_schema():
@@ -670,13 +628,6 @@ def _sync_merged_schema():
             "note": "ALTER TABLE tutoring_bookings ADD COLUMN note TEXT NULL",
             "status": "ALTER TABLE tutoring_bookings ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'pending'",
         },
-        "tutor_profile_bookings": {
-            "session_date": "ALTER TABLE tutor_profile_bookings ADD COLUMN session_date VARCHAR(50) NULL",
-            "start_time": "ALTER TABLE tutor_profile_bookings ADD COLUMN start_time VARCHAR(50) NULL",
-            "note": "ALTER TABLE tutor_profile_bookings ADD COLUMN note TEXT NULL",
-            "status": "ALTER TABLE tutor_profile_bookings ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'pending'",
-            "created_at": "ALTER TABLE tutor_profile_bookings ADD COLUMN created_at DATETIME NULL",
-        },
         "campus_events": {
             "target_audience": "ALTER TABLE campus_events ADD COLUMN target_audience VARCHAR(100) NOT NULL DEFAULT 'Open to all'",
             "capacity_limit": "ALTER TABLE campus_events ADD COLUMN capacity_limit INTEGER NOT NULL DEFAULT 0",
@@ -711,16 +662,6 @@ def _sync_merged_schema():
             "destination_latitude": "ALTER TABLE rides ADD COLUMN destination_latitude FLOAT NULL",
             "destination_longitude": "ALTER TABLE rides ADD COLUMN destination_longitude FLOAT NULL",
             "updated_at": "ALTER TABLE rides ADD COLUMN updated_at DATETIME NULL",
-        },
-        "direct_messages": {
-            "context_type": "ALTER TABLE direct_messages ADD COLUMN context_type VARCHAR(80) NULL",
-            "created_at": "ALTER TABLE direct_messages ADD COLUMN created_at DATETIME NULL",
-        },
-        "tutors": {
-            "latitude": "ALTER TABLE tutors ADD COLUMN latitude FLOAT NULL",
-            "longitude": "ALTER TABLE tutors ADD COLUMN longitude FLOAT NULL",
-            "review_count": "ALTER TABLE tutors ADD COLUMN review_count INTEGER NOT NULL DEFAULT 0",
-            "location": "ALTER TABLE tutors ADD COLUMN location VARCHAR(255) NULL",
         },
     }
 
@@ -764,15 +705,10 @@ def ensure_database_ready():
 # ROUTES
 # ==========================================
 
-#@app.route('/')
-#def home():
-    #return render_template('base.html')
 @app.route("/")
 def home():
     if "user_id" in session:
-        # If logged in, go to dashboard
         return redirect(url_for("dashboard"))
-    # If not logged in, go to login
     return redirect(url_for("login"))
 
 # ==========================================
@@ -795,8 +731,6 @@ def register():
             flash("Please fill in all signup fields.", "danger")
             return redirect(url_for("register"))
 
-        #hashed_pw = generate_password_hash(request.form['password'], method='pbkdf2:sha256')
-        # Check if email already exists
         existing_user = User.query.filter(
             (func.lower(User.email) == email) | (func.lower(User.username) == username.lower())
         ).first()
@@ -827,11 +761,7 @@ def register():
             db.session.rollback()
             flash("An error occurred during registration. Please try again.", "danger")
             return redirect(url_for("register"))
-        #db.session.add(new_user)
-        #db.session.commit()
-        #flash("Registration successful! Please log in.", "success")
-        #return redirect(url_for('login'))
-        
+
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -908,7 +838,7 @@ def callback():
 
 
 # ==========================================
-# DIPTO'S ROUTES: NOTES
+# NOTES SHARING
 # ==========================================
 
 @app.route("/upload", methods=["GET", "POST"])
@@ -1048,6 +978,10 @@ def edit_note(note_id):
         return login_redirect
 
     note = Note.query.get_or_404(note_id)
+    if note.uploader_id != current_user_id():
+        flash("You can only edit notes you uploaded.", "danger")
+        return redirect(url_for("search_notes"))
+
     if request.method == "POST":
         note.title = request.form.get("title")
         note.description = f"Course: {request.form.get('course')}"
@@ -1080,6 +1014,10 @@ def delete_note(note_id):
         return login_redirect
 
     note = Note.query.get_or_404(note_id)
+    if note.uploader_id != current_user_id():
+        flash("You can only delete notes you uploaded.", "danger")
+        return redirect(url_for("search_notes"))
+
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], note.file_path)
     if os.path.exists(filepath):
         os.remove(filepath)
@@ -1092,7 +1030,7 @@ def delete_note(note_id):
 
 
 # ==========================================
-# DIPTO'S ROUTES: DEADLINES AND STUDY SESSION API
+# DEADLINES AND STUDY SESSION API
 # ==========================================
 
 @app.route("/deadlines")
@@ -1159,7 +1097,12 @@ def add_deadline():
         flash("Title and deadline date/time are required.", "danger")
         return redirect(url_for("deadlines"))
 
-    dt_obj = datetime.strptime(f"{deadline_date} {deadline_time}", "%Y-%m-%d %H:%M")
+    try:
+        dt_obj = datetime.strptime(f"{deadline_date} {deadline_time}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        flash("Please enter a valid deadline date and time.", "danger")
+        return redirect(url_for("deadlines"))
+
     new_deadline = AcademicDeadline(
         user_id=current_user_id(),
         title=title,
@@ -1187,7 +1130,7 @@ def add_deadline():
         }
         service.events().insert(calendarId="primary", body=event).execute()
     except Exception as error:
-        print(f"Google Calendar API Error: {error}")
+        app.logger.info("Google Calendar sync skipped: %s", error)
 
     flash("Deadline added successfully!", "success")
     return redirect(url_for("deadlines"))
@@ -1200,6 +1143,10 @@ def delete_deadline(id):
         return login_redirect
 
     deadline = AcademicDeadline.query.get_or_404(id)
+    if deadline.user_id != current_user_id():
+        flash("You can only remove your own deadlines.", "danger")
+        return redirect(url_for("deadlines"))
+
     db.session.delete(deadline)
     db.session.commit()
     flash("Deadline removed.", "info")
@@ -1247,7 +1194,11 @@ def create_scheduled_study_session():
         if start_datetime >= end_datetime:
             return jsonify({"error": "End time must be after start time"}), 400
 
+        if not (data.get("title") or "").strip():
+            return jsonify({"error": "Missing required field: title"}), 400
+
         meeting_link = ""
+        calendar_synced = False
 
         try:
             service = get_calendar_service()
@@ -1276,9 +1227,10 @@ def create_scheduled_study_session():
                 conferenceDataVersion=1,
             ).execute()
             meeting_link = event_result.get("hangoutLink", "")
+            calendar_synced = True
         except Exception as calendar_error:
-            print(f"Google Calendar API Error: {calendar_error}")
-            return jsonify({"error": f"Failed to create Google Calendar event: {calendar_error}"}), 500
+            # Calendar sync is optional: still save the session locally.
+            app.logger.info("Google Calendar sync skipped: %s", calendar_error)
 
         new_session = ScheduledStudySession(
             created_by=current_user_id(),
@@ -1299,6 +1251,7 @@ def create_scheduled_study_session():
                 "message": "Study session scheduled successfully!",
                 "session_id": new_session.id,
                 "meeting_link": meeting_link,
+                "calendar_synced": calendar_synced,
             }
         ), 201
     except KeyError as missing_field:
@@ -1309,7 +1262,9 @@ def create_scheduled_study_session():
         return jsonify({"error": str(error)}), 500
 
 
-# --- Sandip's Routes ---
+# ==========================================
+# PEER TUTORING, REVIEWS & MODERATION
+# ==========================================
 @app.route('/tutors', methods=['GET', 'POST'])
 def tutors():
     if 'user_id' not in session:
@@ -1333,7 +1288,7 @@ def tutors():
             safe_rate = 0.00
         
         new_listing = TutoringListing(
-            tutor_id=session['user_id'], # Using dynamic session ID
+            tutor_id=session['user_id'],
             subject_title=request.form['subject'],
             teaching_style=request.form['teaching_style'],
             availability_text=request.form['availability'],
@@ -1652,30 +1607,22 @@ def resolve_report(report_id, action):
 
     report = db.session.get(Report, report_id)
     if report and report.status == 'Pending':
-        offender_id = None
-        if report.reported_type == 'Tutor':
-            item = db.session.get(TutoringListing, report.reported_id)
+        reportable = {
+            'Tutor': (TutoringListing, 'tutor_id'),
+            'Skill Exchange': (SkillExchange, 'user_id'),
+            'Study Group': (StudyPartnerPost, 'user_id'),
+            'Event': (CampusEvent, 'created_by'),
+        }
+        item, offender_id = None, None
+        if report.reported_type in reportable:
+            model, owner_field = reportable[report.reported_type]
+            item = db.session.get(model, report.reported_id)
             if item:
-                offender_id = item.tutor_id
-                item.status = 'Banned'
-        elif report.reported_type == 'Skill Exchange':
-            item = db.session.get(SkillExchange, report.reported_id)
-            if item:
-                offender_id = item.user_id
-                item.status = 'Banned'
-        elif report.reported_type == 'Study Group':
-            item = db.session.get(StudyPartnerPost, report.reported_id)
-            if item:
-                offender_id = item.user_id
-                item.status = 'Banned'
-        
-        elif report.reported_type == 'Event':
-            item = db.session.get(CampusEvent, report.reported_id)
-            if item:
-                offender_id = item.created_by
-                item.status = 'Banned'
+                offender_id = getattr(item, owner_field)
 
         if action == 'approve':
+            if item:
+                item.status = 'Banned'
             report.status = 'Approved (Banned)'
             if offender_id:
                 offender = db.session.get(User, offender_id)
@@ -1688,7 +1635,7 @@ def resolve_report(report_id, action):
             report.status = 'Rejected (Penalty)'
             reporter = db.session.get(User, report.reporter_id)
             if reporter:
-                reporter.trust_penalty += 20
+                reporter.trust_penalty = (reporter.trust_penalty or 0) + 20
                 trigger_notification(target_user_id=report.reporter_id, notif_type='system', title='False Report Penalty', message=f"Ticket #{report.id} was rejected. A penalty has been applied to your Trust Score.")
             flash("Report rejected and reporter penalized.", "warning")
 
@@ -1835,7 +1782,7 @@ def events():
         db.session.commit()
         return redirect(url_for('events'))
     
-    all_events = CampusEvent.query.join(User).filter(User.is_banned == False).order_by(CampusEvent.id.desc()).all()
+    all_events = visible_events_query().order_by(CampusEvent.id.desc()).all()
     return render_template('events.html', events=all_events)
 
 @app.route('/rsvp/<int:event_id>/<string:status>', methods=['POST'])
@@ -1843,8 +1790,11 @@ def events():
 def rsvp(event_id, status):
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    if status not in RSVP_STATUSES:
+        flash("Invalid RSVP option.", "danger")
+        return redirect(url_for('events'))
     event = db.session.get(CampusEvent, event_id)
-    if not event:
+    if not event or event.status in ('Deleted', 'Banned'):
         flash("Event not found.", "danger")
         return redirect(url_for('events'))
     existing_rsvp = EventParticipant.query.filter_by(event_id=event_id, user_id=session['user_id']).first()
@@ -1866,7 +1816,9 @@ def rsvp(event_id, status):
     db.session.commit()
     return redirect(url_for('events'))
 
-# --- Queenw's Routes ---
+# ==========================================
+# STUDY PARTNERS & MESSAGING
+# ==========================================
 @app.route('/study_partners', methods=['GET', 'POST'])
 @app.route('/study-partners', methods=['GET', 'POST'])
 def study_partners():
@@ -1994,11 +1946,14 @@ def messages(conv_id=None):
         active_conv = my_convs[0]
 
     if request.method == 'POST' and active_conv:
+        content = (request.form.get('content') or '').strip()
+        if not content:
+            return redirect(url_for('messages', conv_id=active_conv.id))
         new_msg = Message(
             conversation_id=active_conv.id,
             sender_id=current_user_id,
-            message_text=request.form.get('content', ''),
-            is_seen=0 
+            message_text=content,
+            is_seen=0
         )
         db.session.add(new_msg)
         other_user = active_conv.get_other_user(current_user_id)
@@ -2027,28 +1982,6 @@ def messages(conv_id=None):
                            active_conv=active_conv)
 
 
-@app.route("/home")
-def portal_home():
-    login_redirect = require_login_redirect()
-    if login_redirect:
-        return login_redirect
-
-    major = request.args.get("major") or session.get("user_major")
-    tutor_query = TutoringListing.query.join(User).filter(TutoringListing.status == "Active")
-    if major:
-        tutor_query = tutor_query.filter(
-            (func.lower(User.department) == major.lower()) |
-            (func.lower(User.major) == major.lower())
-        )
-    top_tutors = tutor_query.all()
-    top_tutors.sort(key=lambda listing: (listing.user.average_rating, listing.user.review_count, listing.id), reverse=True)
-    top_tutors = top_tutors[:5]
-
-    total_notes = Note.query.count()
-    recent_notes = Note.query.order_by(Note.created_at.desc()).limit(5).all()
-    return render_template("home.html", total_notes=total_notes, recent_notes=recent_notes, top_tutors=top_tutors)
-
-
 @app.route("/db-health")
 def db_health():
     try:
@@ -2056,7 +1989,8 @@ def db_health():
             conn.execute(text("SELECT 1"))
         return jsonify({"status": "ok", "database": "reachable"})
     except Exception as error:
-        return jsonify({"status": "error", "database": "unreachable", "error": str(error)}), 503
+        app.logger.error("Database health check failed: %s", error)
+        return jsonify({"status": "error", "database": "unreachable"}), 503
 
 
 @app.route("/browse")
@@ -2081,7 +2015,10 @@ def post_item():
         image_file = request.files.get("image")
         filename = None
         if image_file and image_file.filename:
-            filename = secure_filename(image_file.filename)
+            if not allowed_file(image_file.filename, ALLOWED_IMAGE_EXTENSIONS):
+                flash("Please upload a PNG, JPG, GIF, WEBP or AVIF image.", "danger")
+                return redirect(url_for("post_item"))
+            filename = f"{uuid.uuid4().hex}_{secure_filename(image_file.filename)}"
             image_file.save(os.path.join(app.config["ITEM_UPLOAD_FOLDER"], filename))
 
         try:
@@ -2136,11 +2073,10 @@ def item_details(item_id):
 def edit_item(item_id):
     item = Item.query.get_or_404(item_id)
     current_user = db.session.get(User, session.get("user_id")) if session.get("user_id") else None
-    user_email = current_user.email if current_user else (request.args.get("email") or request.form.get("email"))
-    if not user_email:
+    if not current_user:
         flash("Please log in to edit your item.", "warning")
         return redirect(url_for("login"))
-    if user_email.lower() != item.seller_email.lower():
+    if current_user.email.lower() != item.seller_email.lower():
         flash("You are not authorized to edit this item.", "danger")
         return redirect(url_for("item_details", item_id=item.id))
 
@@ -2169,11 +2105,10 @@ def edit_item(item_id):
 def delete_item(item_id):
     item = Item.query.get_or_404(item_id)
     current_user = db.session.get(User, session.get("user_id")) if session.get("user_id") else None
-    user_email = current_user.email if current_user else request.form.get("email")
-    if not user_email:
+    if not current_user:
         flash("Please log in to delete your item.", "warning")
         return redirect(url_for("login"))
-    if user_email.lower() != item.seller_email.lower():
+    if current_user.email.lower() != item.seller_email.lower():
         flash("You are not authorized to delete this item.", "danger")
         return redirect(url_for("item_details", item_id=item.id))
 
@@ -2616,143 +2551,9 @@ def map_view():
     return render_template("map.html", locations=locations)
 
 
-@app.route("/campus-tutors/post", methods=["GET", "POST"])
-def post_tutor():
-    current_user = db.session.get(User, session.get("user_id")) if session.get("user_id") else None
-    if request.method == "POST":
-        try:
-            tutor = Tutor(
-                name=request.form.get("name") or (current_user.full_name if current_user else ""),
-                major=request.form.get("major") or request.form.get("subject"),
-                subject=request.form.get("subject"),
-                rating=0.0,
-                review_count=0,
-                bio=request.form.get("bio"),
-                location=request.form.get("location"),
-                latitude=float(request.form.get("latitude")) if request.form.get("latitude") else None,
-                longitude=float(request.form.get("longitude")) if request.form.get("longitude") else None,
-                contact_info=request.form.get("contact_info") or (current_user.email if current_user else "Not provided"),
-            )
-            db.session.add(tutor)
-            db.session.commit()
-            flash("Tutor posted successfully.", "success")
-            return redirect(url_for("browse_rides"))
-        except Exception as error:
-            db.session.rollback()
-            flash(f"Error posting tutor: {error}", "danger")
-
-    return render_template("post_tutor.html", current_user=current_user)
-
-
-@app.route("/campus-tutors/<int:tutor_id>")
-def tutor_details(tutor_id):
-    tutor = Tutor.query.get_or_404(tutor_id)
-    recent_reviews = TutorReview.query.filter_by(tutor_id=tutor.id).order_by(TutorReview.created_at.desc()).limit(5).all()
-    return render_template("tutor_details.html", tutor=tutor, recent_reviews=recent_reviews)
-
-
-@app.route("/campus-tutors/<int:tutor_id>/book", methods=["POST"])
-def book_tutor_profile(tutor_id):
-    current_user = db.session.get(User, session.get("user_id")) if session.get("user_id") else None
-    if not current_user:
-        flash("Please log in to book a tutor slot.", "warning")
-        return redirect(url_for("login"))
-
-    tutor = Tutor.query.get_or_404(tutor_id)
-    if current_user.email.lower() == tutor.contact_info.lower() or current_user.full_name.lower() == tutor.name.lower():
-        flash("You cannot book your own tutor profile.", "danger")
-        return redirect(url_for("tutors"))
-
-    session_date = (request.form.get("session_date") or "").strip()
-    start_time = (request.form.get("start_time") or "").strip()
-    note = (request.form.get("note") or "").strip()
-    if not session_date or not start_time or not note:
-        flash("Please fill in date, time, and note for the tutor booking.", "danger")
-        return redirect(url_for("tutors"))
-
-    booking = TutorProfileBooking(
-        tutor_id=tutor.id,
-        student_id=current_user.id,
-        session_date=session_date,
-        start_time=start_time,
-        note=note,
-        status="pending",
-    )
-    db.session.add(booking)
-    db.session.commit()
-    flash(f"Your booking request has been sent to {tutor.name}.", "success")
-    return redirect(url_for(
-        "tutors",
-        major=request.form.get("major", ""),
-        subject=request.form.get("subject", ""),
-        min_rating=request.form.get("min_rating", ""),
-    ))
-
-
-@app.route("/campus-tutors/<int:tutor_id>/contact", methods=["GET", "POST"])
-def tutor_contact(tutor_id):
-    tutor = Tutor.query.get_or_404(tutor_id)
-    if request.method == "POST":
-        student_id = request.form.get("student_id")
-        message = request.form.get("message")
-        if not student_id or not message:
-            flash("Please provide your identifier and a message.", "danger")
-            return redirect(url_for("tutor_contact", tutor_id=tutor.id))
-        db.session.add(TutorMessage(
-            tutor_id=tutor.id,
-            student_id=student_id,
-            student_contact=request.form.get("student_contact"),
-            subject=request.form.get("subject"),
-            message=message,
-        ))
-        db.session.commit()
-        flash("Message sent to tutor.", "success")
-        return redirect(url_for("tutors"))
-
-    return render_template("tutor_contact.html", tutor=tutor)
-
-
-@app.route("/campus-tutors/<int:tutor_id>/review", methods=["GET", "POST"])
-def tutor_review(tutor_id):
-    tutor = Tutor.query.get_or_404(tutor_id)
-    if request.method == "POST":
-        student_id = request.form.get("student_id")
-        rating = int(request.form.get("rating", 0))
-        if not student_id or rating < 1 or rating > 5:
-            flash("Please provide a valid student id and rating between 1 and 5.", "danger")
-            return redirect(url_for("tutor_review", tutor_id=tutor.id))
-
-        review = TutorReview(
-            tutor_id=tutor.id,
-            student_id=student_id,
-            rating=rating,
-            review=request.form.get("review"),
-        )
-        total = (tutor.rating * tutor.review_count) + rating
-        tutor.review_count += 1
-        tutor.rating = total / tutor.review_count
-        db.session.add(review)
-        db.session.commit()
-        flash("Thank you for your review.", "success")
-        return redirect(url_for("tutors"))
-
-    return render_template("tutor_review.html", tutor=tutor)
-
-
-@app.route("/set-major", methods=["POST"])
-def set_major():
-    major = request.form.get("major")
-    if major:
-        session["user_major"] = major
-        flash(f"Major set to {major} for recommendations.", "success")
-    else:
-        flash("Please provide a major.", "danger")
-    return redirect(url_for("portal_home"))
-
-
 @app.route("/api/events")
 def get_events():
-    events = CampusEvent.query.order_by(CampusEvent.id.desc()).all()
+    events = visible_events_query().order_by(CampusEvent.id.desc()).all()
     return jsonify({
         "events": [
             {
@@ -2769,7 +2570,13 @@ def get_events():
 
 @app.route("/api/study-partners")
 def get_partners():
-    partners = StudyPartnerPost.query.order_by(StudyPartnerPost.id.desc()).all()
+    partners = (
+        StudyPartnerPost.query
+        .join(User)
+        .filter(User.is_banned == False, StudyPartnerPost.status == "open")
+        .order_by(StudyPartnerPost.id.desc())
+        .all()
+    )
     return jsonify({
         "study_partners": [
             {
@@ -2785,55 +2592,77 @@ def get_partners():
 
 @app.route("/api/messages", methods=["POST"])
 def send_message():
-    req_json = request.get_json(silent=True) or {}
-    sender = req_json.get("sender")
-    receiver = req_json.get("receiver")
-    message_text = req_json.get("message")
-    if not sender or not receiver or not message_text:
-        return jsonify({"error": "sender, receiver, and message are required"}), 400
+    if "user_id" not in session:
+        return jsonify({"error": "Authentication required."}), 401
 
-    message = DirectMessage(sender=sender, receiver=receiver, message=message_text)
+    req_json = request.get_json(silent=True) or {}
+    message_text = (req_json.get("message") or "").strip()
+    try:
+        conversation_id = int(req_json.get("conversation_id"))
+    except (TypeError, ValueError):
+        conversation_id = None
+    if not conversation_id or not message_text:
+        return jsonify({"error": "conversation_id and message are required"}), 400
+
+    conversation = db.session.get(Conversation, conversation_id)
+    if not conversation or session["user_id"] not in (conversation.participant1_id, conversation.participant2_id):
+        return jsonify({"error": "Conversation not found."}), 404
+
+    message = Message(conversation_id=conversation.id, sender_id=session["user_id"], message_text=message_text, is_seen=0)
     db.session.add(message)
+    other_user = conversation.get_other_user(session["user_id"])
+    if other_user:
+        trigger_notification(
+            target_user_id=other_user.id,
+            notif_type="message",
+            title="New Message",
+            message=f"{session.get('full_name', 'Someone')} sent you a message!",
+        )
     db.session.commit()
     return jsonify({"response": "Message Sent Successfully", "id": message.id}), 201
 
 
 @app.route("/api/tutors", methods=["POST"])
 def add_tutor():
-    req_json = request.get_json(silent=True) or {}
-    name = req_json.get("name")
-    subject = req_json.get("subject")
-    rate = req_json.get("rate")
-    if not name or not subject or rate is None:
-        return jsonify({"error": "name, subject, and rate are required"}), 400
+    if "user_id" not in session:
+        return jsonify({"error": "Authentication required."}), 401
+    if check_restrictions():
+        return jsonify({"error": "Your account is restricted from posting."}), 403
 
+    req_json = request.get_json(silent=True) or {}
+    subject = (req_json.get("subject") or "").strip()
+    if not subject:
+        return jsonify({"error": "subject is required"}), 400
     try:
-        rating = float(rate)
+        hourly_rate = float(req_json.get("rate") or 0)
     except (TypeError, ValueError):
         return jsonify({"error": "rate must be numeric"}), 400
 
-    tutor = Tutor(
-        name=name,
-        major=req_json.get("major") or subject,
-        subject=subject,
-        rating=rating,
-        review_count=int(req_json.get("review_count") or 1),
-        bio=req_json.get("bio") or "Tutor listing imported from the API.",
-        location=req_json.get("location"),
-        contact_info=req_json.get("contact") or req_json.get("contact_info") or "Not provided",
+    listing = TutoringListing(
+        tutor_id=session["user_id"],
+        subject_title=subject,
+        teaching_style=req_json.get("teaching_style"),
+        availability_text=req_json.get("availability"),
+        mode=req_json.get("mode") or "Both",
+        location_text=req_json.get("location"),
+        rate_type=req_json.get("rate_type") or ("Paid" if hourly_rate > 0 else "Free"),
+        hourly_rate=hourly_rate,
     )
-    db.session.add(tutor)
+    db.session.add(listing)
     db.session.commit()
-    return jsonify({"response": "Tutor Listing Created Successfully", "id": tutor.id}), 201
+    return jsonify({"response": "Tutor Listing Created Successfully", "id": listing.id}), 201
 
-# --- NEW ROUTE: UNIFIED STUDENT DASHBOARD ---
+
+# ==========================================
+# UNIFIED STUDENT DASHBOARD
+# ==========================================
+
 @app.route('/dashboard')
 def dashboard():
     login_redirect = require_login_redirect()
-    #if 'user_id' not in session:
     if login_redirect:
-        return redirect(url_for('login'))
-        
+        return login_redirect
+
     current_user_id = session['user_id']
     current_user = db.session.get(User, current_user_id)
     if not current_user:
@@ -2900,7 +2729,7 @@ def dashboard():
 
     stats = {
         "notes": Note.query.filter_by(uploader_id=current_user_id).count(),
-        "deadlines": AcademicDeadline.query.filter_by(user_id=current_user_id).count(),
+        "deadlines": AcademicDeadline.query.filter_by(user_id=current_user_id, status="pending").count(),
         "completed_deadlines": AcademicDeadline.query.filter_by(user_id=current_user_id, status="completed").count(),
         "upcoming_sessions": ScheduledStudySession.query.filter_by(created_by=current_user_id).count(),
         "items": Item.query.filter(func.lower(Item.seller_email) == current_user.email.lower()).count(),
@@ -2938,4 +2767,4 @@ def save_notif_prefs():
 
 if __name__ == '__main__':
     initialize_database()
-    app.run(debug=True)
+    app.run(debug=os.environ.get("FLASK_DEBUG") == "1")

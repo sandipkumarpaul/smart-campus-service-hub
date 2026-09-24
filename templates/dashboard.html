@@ -238,7 +238,7 @@
                             {% for item in items %}
                             <div class="border-bottom py-2">
                                 <div class="fw-semibold">{{ item.title }}</div>
-                                <small class="text-muted">{{ item.category }} | ${{ "%.2f"|format(item.price) }}</small>
+                                <small class="text-muted">{{ item.category }} | BDT {{ "%.2f"|format(item.price) }}</small>
                             </div>
                             {% else %}
                             <p class="text-muted small mb-0">No item listings yet.</p>

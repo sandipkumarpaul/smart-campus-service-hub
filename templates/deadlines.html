@@ -167,11 +167,20 @@
             .then(response => response.json())
             .then(data => {
                 const respDiv = document.getElementById('apiResponse');
+                respDiv.textContent = '';
                 if (data.message) {
-                    respDiv.innerHTML = `<i class="bi bi-check-circle-fill"></i> ${data.message} (Simulated Google Meet link generated)`;
+                    let note = ' Saved to your Academic Dashboard.';
+                    if (data.meeting_link) {
+                        note = ' Google Meet link: ' + data.meeting_link;
+                    } else if (!data.calendar_synced) {
+                        note += ' (Google Calendar is not connected, so no Meet link was created.)';
+                    }
+                    respDiv.className = 'mt-3 text-success';
+                    respDiv.textContent = data.message + note;
                     document.getElementById('studySessionForm').reset();
                 } else {
-                    respDiv.innerHTML = `<span class="text-danger">Error: ${data.error}</span>`;
+                    respDiv.className = 'mt-3 text-danger';
+                    respDiv.textContent = 'Error: ' + data.error;
                 }
             })
             .catch((error) => {
